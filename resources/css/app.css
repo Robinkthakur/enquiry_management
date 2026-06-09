@@ -1,0 +1,194 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
+@import 'tailwindcss';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
+@source '../../storage/framework/views/*.php';
+@source '../views/**/*.blade.php';
+@source '../../app/Filament/**/*.php';
+
+@theme {
+    --font-sans: 'Outfit', ui-sans-serif, system-ui, sans-serif;
+
+    /* Custom Teal primary palette */
+    --color-primary-50: #f0fdfa;
+    --color-primary-100: #ccfbf1;
+    --color-primary-200: #99f6e4;
+    --color-primary-300: #5eead4;
+    --color-primary-400: #2dd4bf;
+    --color-primary-500: #14b8a6; /* Main brand color: Teal */
+    --color-primary-600: #0d9488;
+    --color-primary-700: #0f766e;
+    --color-primary-800: #115e59;
+    --color-primary-900: #134e4a;
+    --color-primary-950: #042f2e;
+
+    --color-success-50: var(--color-emerald-50);
+    --color-success-100: var(--color-emerald-100);
+    --color-success-200: var(--color-emerald-200);
+    --color-success-300: var(--color-emerald-300);
+    --color-success-400: var(--color-emerald-400);
+    --color-success-500: var(--color-emerald-500);
+    --color-success-600: var(--color-emerald-600);
+    --color-success-700: var(--color-emerald-700);
+    --color-success-800: var(--color-emerald-800);
+    --color-success-900: var(--color-emerald-900);
+    --color-success-950: var(--color-emerald-950);
+
+    --color-danger-50: var(--color-rose-50);
+    --color-danger-100: var(--color-rose-100);
+    --color-danger-200: var(--color-rose-200);
+    --color-danger-300: var(--color-rose-300);
+    --color-danger-400: var(--color-rose-400);
+    --color-danger-500: var(--color-rose-500);
+    --color-danger-600: var(--color-rose-600);
+    --color-danger-700: var(--color-rose-700);
+    --color-danger-800: var(--color-rose-800);
+    --color-danger-900: var(--color-rose-900);
+    --color-danger-950: var(--color-rose-950);
+
+    --color-warning-50: var(--color-amber-50);
+    --color-warning-100: var(--color-amber-100);
+    --color-warning-200: var(--color-amber-200);
+    --color-warning-300: var(--color-amber-300);
+    --color-warning-400: var(--color-amber-400);
+    --color-warning-500: var(--color-amber-500);
+    --color-warning-600: var(--color-amber-600);
+    --color-warning-700: var(--color-amber-700);
+    --color-warning-800: var(--color-amber-800);
+    --color-warning-900: var(--color-amber-900);
+    --color-warning-950: var(--color-amber-950);
+}
+
+/* Base custom styles to create a premium dashboard layout */
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+::-webkit-scrollbar-thumb {
+    background: rgba(148, 163, 184, 0.2);
+    border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: rgba(148, 163, 184, 0.4);
+}
+
+/* Premium Dark-Slate Sidebar Aesthetic */
+.fi-sidebar {
+    background-color: #0f172a !important; /* Dark Slate background */
+    border-right: 1px solid #1e293b !important;
+}
+.fi-sidebar nav, .fi-sidebar span, .fi-sidebar a, .fi-sidebar div {
+    color: #94a3b8;
+}
+
+.fi-sidebar-item.fi-active > .fi-sidebar-item-btn {
+    background: linear-gradient(135deg, rgba(20, 184, 166, 0.15) 0%, rgba(20, 184, 166, 0.05) 100%) !important;
+    border-left: 3px solid #14b8a6 !important;
+    border-top-left-radius: 0px !important;
+    border-bottom-left-radius: 0px !important;
+}
+.fi-sidebar-item.fi-active > .fi-sidebar-item-btn .fi-sidebar-item-label {
+    color: #ffffff !important;
+    font-weight: 600 !important;
+}
+.fi-sidebar-item.fi-active > .fi-sidebar-item-btn svg {
+    color: #14b8a6 !important;
+}
+.fi-sidebar-item:hover:not(.fi-active) > .fi-sidebar-item-btn {
+    background-color: rgba(255, 255, 255, 0.03) !important;
+}
+.fi-sidebar-item:hover:not(.fi-active) .fi-sidebar-item-label {
+    color: #ffffff !important;
+}
+
+/* Topbar enhancements */
+.fi-topbar {
+    background: #ffffff !important;
+    border-bottom: 2px solid #14b8a6 !important;
+}
+.dark .fi-topbar {
+    background: #090d16 !important;
+    border-bottom: 2px solid #14b8a6 !important;
+}
+
+.dark body, 
+.dark .fi-layout,
+.dark .fi-main {
+    background-color: #090d16 !important;
+}
+
+/* Elevated, Premium Cards & Sections */
+.fi-section, .fi-fo-component, .fi-ta-content {
+    border-radius: 12px !important;
+    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.02), 0 1px 2px -1px rgba(0, 0, 0, 0.02), 0 4px 12px -2px rgba(0, 0, 0, 0.03) !important;
+    border: 1px solid #f1f5f9 !important;
+}
+.dark .fi-section, 
+.dark .fi-fo-component, 
+.dark .fi-ta-content,
+.dark .fi-wi-widget,
+.dark .fi-ta-ctn {
+    background-color: #0f172a !important;
+    border: 1px solid #1e293b !important;
+    box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.25) !important;
+}
+
+/* Focus Ring Customization */
+input:focus, select:focus, textarea:focus {
+    --tw-ring-color: #14b8a6 !important;
+    border-color: #14b8a6 !important;
+    box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.15) !important;
+}
+
+/* Filament Buttons Custom Animation & Drop Shadows */
+.fi-btn {
+    border-radius: 8px !important;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+.fi-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(20, 184, 166, 0.18) !important;
+}
+.fi-btn:active {
+    transform: translateY(0);
+}
+
+/* Elegant Table Styling */
+.fi-ta-header-cell {
+    background-color: #f8fafc !important;
+    color: #475569 !important;
+    font-weight: 600 !important;
+}
+.dark .fi-ta-header-cell {
+    background-color: #0f172a !important;
+    color: #94a3b8 !important;
+}
+
+.fi-ta-row {
+    transition: background-color 0.15s ease-in-out;
+}
+.fi-ta-row:hover {
+    background-color: #fcfdfe !important;
+}
+.dark .fi-ta-row:hover {
+    background-color: #131c2e !important;
+}
+
+/* Glassmorphism Overview Metrics Widget */
+.fi-wi-stats-overview-card {
+    backdrop-filter: blur(8px);
+    background: rgba(255, 255, 255, 0.7) !important;
+    border: 1px solid rgba(226, 232, 240, 0.6) !important;
+    border-radius: 12px !important;
+}
+.dark .fi-wi-stats-overview-card {
+    background: rgba(15, 23, 42, 0.7) !important;
+    border: 1px solid rgba(30, 41, 59, 0.6) !important;
+}
