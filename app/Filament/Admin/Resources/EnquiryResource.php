@@ -196,33 +196,51 @@ class EnquiryResource extends Resource
                                         ->required()
                                         ->options(fn (Enquiry $record) => $record->interestedCourses->pluck('course_name', 'id')->toArray() ?: Course::where('status', 'active')->pluck('course_name', 'id')->toArray())
                                         ->reactive()
-                                        ->reactive()
-                                        ->afterStateUpdated(fn (callable $set) => $set('time_slot', null)),
-                                    Forms\Components\TextInput::make('time_slot')
-                                        ->label('Time Slot')
+                                        ->afterStateUpdated(function ($state, callable $set) {
+                                            if ($state) {
+                                                $course = Course::find($state);
+                                                if ($course) {
+                                                    $set('total_fee', $course->total_fee);
+                                                }
+                                            } else {
+                                                $set('total_fee', 0);
+                                            }
+                                        }),
+                                    Forms\Components\TimePicker::make('start_time')
+                                        ->label('Start Time')
+                                        ->format('h:i A')
+                                        ->displayFormat('h:i A')
                                         ->required()
-                                        ->placeholder('e.g. 09:00 AM - 11:00 AM'),
+                                        ->reactive()
+                                        ->afterStateUpdated(function ($state, callable $get, callable $set) {
+                                            $endTime = $get('end_time');
+                                            if ($state && $endTime) {
+                                                $set('time_slot', "{$state} - {$endTime}");
+                                            }
+                                        }),
+                                    Forms\Components\TimePicker::make('end_time')
+                                        ->label('End Time')
+                                        ->format('h:i A')
+                                        ->displayFormat('h:i A')
+                                        ->required()
+                                        ->reactive()
+                                        ->afterStateUpdated(function ($state, callable $get, callable $set) {
+                                            $startTime = $get('start_time');
+                                            if ($state && $startTime) {
+                                                $set('time_slot', "{$startTime} - {$state}");
+                                            }
+                                        }),
                                     Forms\Components\Select::make('instructor_id')
                                         ->label('Assigned Instructor')
                                         ->options(User::role('Instructor')->pluck('name', 'id'))
                                         ->searchable()
                                         ->required(),
-                                    Forms\Components\TextInput::make('discount_amount')
-                                        ->numeric()
-                                        ->default(0.00)
-                                        ->prefix('₹'),
-                                    Forms\Components\Select::make('installments_count')
-                                        ->label('Number of Installments')
+                                    Forms\Components\TextInput::make('total_fee')
+                                        ->label('Total Course Fee')
                                         ->required()
-                                        ->options([
-                                            1 => '1 Installment (Full Payment)',
-                                            2 => '2 Installments',
-                                            3 => '3 Installments',
-                                            4 => '4 Installments',
-                                            5 => '5 Installments',
-                                            6 => '6 Installments',
-                                        ])
-                                        ->default(2),
+                                        ->numeric()
+                                        ->prefix('₹'),
+                                    Forms\Components\Hidden::make('time_slot'),
                                 ])
                                 ->minItems(1)
                                 ->columns(2),
@@ -233,14 +251,10 @@ class EnquiryResource extends Resource
                                 
                                 foreach ($data['enrollments'] as $enrollment) {
                                     $course = Course::findOrFail($enrollment['course_id']);
-                                    
-                                    $totalFee = $course->total_fee + $course->registration_fee;
-                                    $discount = floatval($enrollment['discount_amount'] ?? 0);
-                                    $finalFee = $totalFee - $discount;
-                                    $regFee = $course->registration_fee;
+                                    $fee = floatval($enrollment['total_fee'] ?? $course->total_fee);
 
                                     // Create Admission
-                                    $admission = Admission::create([
+                                    Admission::create([
                                         'enquiry_id' => $record->id,
                                         'student_name' => $record->name,
                                         'father_name' => $record->father_name,
@@ -251,53 +265,14 @@ class EnquiryResource extends Resource
                                         'time_slot' => $enrollment['time_slot'],
                                         'instructor_id' => $enrollment['instructor_id'],
                                         'admission_date' => $admissionDate,
-                                        'total_fee' => $totalFee,
-                                        'discount_amount' => $discount,
-                                        'final_fee' => $finalFee,
-                                        'registration_fee' => $regFee,
+                                        'total_fee' => $fee,
+                                        'discount_amount' => 0.00,
+                                        'final_fee' => $fee,
+                                        'registration_fee' => 0.00,
                                         'status' => 'Active',
                                     ]);
-
-                                    // Generate Installments
-                                    $installmentsCount = intval($enrollment['installments_count']);
-                                    
-                                    // Installment 1 is always the Registration Fee (due immediately)
-                                    FeeInstallment::create([
-                                        'admission_id' => $admission->id,
-                                        'installment_no' => 1,
-                                        'due_date' => $admissionDate,
-                                        'amount' => $regFee,
-                                        'paid_amount' => 0.00,
-                                        'due_amount' => $regFee,
-                                        'status' => 'Pending',
-                                    ]);
-
-                                    if ($installmentsCount > 1) {
-                                        $remainingFee = $finalFee - $regFee;
-                                        $instAmount = round($remainingFee / ($installmentsCount - 1), 2);
-                                        
-                                        for ($i = 2; $i <= $installmentsCount; $i++) {
-                                            $dueDate = date('Y-m-d', strtotime($admissionDate . ' + ' . (($i - 1) * 30) . ' days'));
-                                            
-                                            // Make sure the last installment adjusts for rounding errors
-                                            if ($i === $installmentsCount) {
-                                                $prevSum = $instAmount * ($installmentsCount - 2);
-                                                $instAmount = $remainingFee - $prevSum;
-                                            }
-
-                                            FeeInstallment::create([
-                                                'admission_id' => $admission->id,
-                                                'installment_no' => $i,
-                                                'due_date' => $dueDate,
-                                                'amount' => $instAmount,
-                                                'paid_amount' => 0.00,
-                                                'due_amount' => $instAmount,
-                                                'status' => 'Pending',
-                                            ]);
-                                        }
-                                    }
                                 }
-
+ 
                                 // Update Enquiry
                                 $record->update(['status' => 'Admitted']);
                             });

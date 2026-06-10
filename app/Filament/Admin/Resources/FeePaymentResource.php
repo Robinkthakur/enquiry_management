@@ -35,38 +35,63 @@ class FeePaymentResource extends Resource
                             ->reactive()
                             ->searchable()
                             ->default(request()->query('admission_id'))
-                            ->afterStateUpdated(fn (callable $set) => $set('fee_installment_id', null)),
-                        Forms\Components\Select::make('fee_installment_id')
-                            ->label('Select Installment')
-                            ->required()
-                            ->options(function (callable $get) {
-                                $admissionId = $get('admission_id');
-                                if (!$admissionId) {
-                                    return [];
-                                }
-                                return FeeInstallment::where('admission_id', $admissionId)
-                                    ->where('status', '!=', 'Paid')
-                                    ->get()
-                                    ->mapWithKeys(fn ($inst) => [
-                                        $inst->id => "Inst #{$inst->installment_no} (Due: {$inst->due_date->format('Y-m-d')} - Due Amt: ₹{$inst->due_amount})"
-                                    ])
-                                    ->toArray();
-                            })
-                            ->default(request()->query('fee_installment_id'))
-                            ->reactive()
                             ->afterStateUpdated(function ($state, callable $set) {
                                 if ($state) {
-                                     $inst = FeeInstallment::find($state);
-                                     if ($inst) {
-                                         $set('amount_paid', $inst->due_amount);
-                                     }
-                                 }
+                                    $admission = Admission::find($state);
+                                    if ($admission) {
+                                        $totalPaid = $admission->payments()->sum('amount_paid');
+                                        $remaining = max(0.00, $admission->final_fee - $totalPaid);
+                                        $set('amount_paid', $remaining);
+                                    }
+                                } else {
+                                    $set('amount_paid', null);
+                                }
                             }),
                         Forms\Components\TextInput::make('amount_paid')
                             ->required()
                             ->numeric()
                             ->prefix('₹')
-                            ->default(request()->query('amount_paid')),
+                            ->default(request()->query('amount_paid'))
+                            ->rules([
+                                fn (callable $get, $record) => function (string $attribute, $value, \Closure $fail) use ($get, $record) {
+                                    $admissionId = $get('admission_id');
+                                    if (!$admissionId) {
+                                        return;
+                                    }
+                                    $admission = Admission::find($admissionId);
+                                    if (!$admission) {
+                                        return;
+                                    }
+                                    
+                                    $totalPaid = $admission->payments()
+                                        ->when($record, fn ($q) => $q->where('id', '!=', $record->id))
+                                        ->sum('amount_paid');
+                                    
+                                    $remaining = $admission->final_fee - $totalPaid;
+                                    
+                                    if (floatval($value) <= 0) {
+                                        $fail('The amount paid must be greater than zero.');
+                                    }
+                                    if (floatval($value) > $remaining) {
+                                        $fail("The payment amount cannot exceed the remaining outstanding fee of ₹" . number_format($remaining, 2));
+                                    }
+                                }
+                            ])
+                            ->helperText(function (callable $get, ?FeePayment $record) {
+                                $admissionId = $get('admission_id');
+                                if (!$admissionId) {
+                                    return 'Please select a student admission first.';
+                                }
+                                $admission = Admission::find($admissionId);
+                                if (!$admission) {
+                                    return '';
+                                }
+                                $totalPaid = $admission->payments()
+                                    ->when($record, fn ($q) => $q->where('id', '!=', $record->id))
+                                    ->sum('amount_paid');
+                                $remaining = max(0.00, $admission->final_fee - $totalPaid);
+                                return "Remaining outstanding balance: ₹" . number_format($remaining, 2);
+                            }),
                         Forms\Components\Select::make('payment_method')
                             ->required()
                             ->options([
@@ -96,8 +121,9 @@ class FeePaymentResource extends Resource
                     ->label('Student')
                     ->searchable()
                     ->sortable(),
-                Tables\Columns\TextColumn::make('installment.installment_no')
-                    ->label('Inst No')
+                Tables\Columns\TextColumn::make('admission.course.course_name')
+                    ->label('Course')
+                    ->searchable()
                     ->sortable(),
                 Tables\Columns\TextColumn::make('amount_paid')
                     ->money('INR')

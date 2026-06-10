@@ -64,7 +64,7 @@ class AdmissionResource extends Resource
                         Forms\Components\Repeater::make('enrollments')
                             ->label('Enrollments')
                             ->schema([
-                                Grid::make(3)
+                                Grid::make(4)
                                     ->schema([
                                         Forms\Components\Select::make('course_id')
                                             ->relationship('course', 'course_name')
@@ -74,9 +74,9 @@ class AdmissionResource extends Resource
                                                 if ($state) {
                                                     $course = Course::find($state);
                                                     if ($course) {
-                                                        $set('total_fee', $course->total_fee + $course->registration_fee);
-                                                        $set('registration_fee', $course->registration_fee);
-                                                        $set('final_fee', ($course->total_fee + $course->registration_fee));
+                                                        $set('total_fee', $course->total_fee);
+                                                        $set('registration_fee', 0.00);
+                                                        $set('final_fee', $course->total_fee);
                                                     }
                                                 } else {
                                                     $set('total_fee', 0);
@@ -84,44 +84,62 @@ class AdmissionResource extends Resource
                                                     $set('final_fee', 0);
                                                 }
                                             }),
-                                        Forms\Components\TextInput::make('time_slot')
-                                            ->label('Time Slot')
+                                        Forms\Components\TimePicker::make('start_time')
+                                            ->label('Start Time')
+                                            ->format('h:i A')
+                                            ->displayFormat('h:i A')
                                             ->required()
-                                            ->placeholder('e.g. 09:00 AM - 11:00 AM'),
+                                            ->reactive()
+                                            ->afterStateHydrated(function ($component, $state, callable $get) {
+                                                $timeSlot = $get('time_slot');
+                                                if ($timeSlot && strpos($timeSlot, ' - ') !== false) {
+                                                    list($start, $end) = explode(' - ', $timeSlot);
+                                                    $component->state($start);
+                                                }
+                                            })
+                                            ->afterStateUpdated(function ($state, callable $get, callable $set) {
+                                                $endTime = $get('end_time');
+                                                if ($state && $endTime) {
+                                                    $set('time_slot', "{$state} - {$endTime}");
+                                                }
+                                            }),
+                                        Forms\Components\TimePicker::make('end_time')
+                                            ->label('End Time')
+                                            ->format('h:i A')
+                                            ->displayFormat('h:i A')
+                                            ->required()
+                                            ->reactive()
+                                            ->afterStateHydrated(function ($component, $state, callable $get) {
+                                                $timeSlot = $get('time_slot');
+                                                if ($timeSlot && strpos($timeSlot, ' - ') !== false) {
+                                                    list($start, $end) = explode(' - ', $timeSlot);
+                                                    $component->state($end);
+                                                }
+                                            })
+                                            ->afterStateUpdated(function ($state, callable $get, callable $set) {
+                                                $startTime = $get('start_time');
+                                                if ($state && $startTime) {
+                                                    $set('time_slot', "{$startTime} - {$state}");
+                                                }
+                                            }),
                                         Forms\Components\Select::make('instructor_id')
                                             ->label('Assigned Instructor')
                                             ->options(User::role('Instructor')->pluck('name', 'id'))
                                             ->searchable()
                                             ->required(),
                                     ]),
-                                Grid::make(5)
+                                Forms\Components\Hidden::make('time_slot'),
+                                Grid::make(2)
                                     ->schema([
                                         Forms\Components\TextInput::make('total_fee')
+                                            ->label('Total Course Fee')
                                             ->required()
                                             ->numeric()
-                                            ->prefix('₹')
-                                            ->readOnly(),
-                                        Forms\Components\TextInput::make('registration_fee')
-                                            ->required()
-                                            ->numeric()
-                                            ->prefix('₹')
-                                            ->readOnly(),
-                                        Forms\Components\TextInput::make('discount_amount')
-                                            ->required()
-                                            ->numeric()
-                                            ->default(0.00)
                                             ->prefix('₹')
                                             ->reactive()
-                                            ->afterStateUpdated(function ($state, callable $get, callable $set) {
-                                                $total = floatval($get('total_fee') ?? 0);
-                                                $discount = floatval($state ?? 0);
-                                                $set('final_fee', $total - $discount);
+                                            ->afterStateUpdated(function ($state, callable $set) {
+                                                $set('final_fee', floatval($state ?? 0));
                                             }),
-                                        Forms\Components\TextInput::make('final_fee')
-                                            ->required()
-                                            ->numeric()
-                                            ->prefix('₹')
-                                            ->readOnly(),
                                         Forms\Components\Select::make('status')
                                             ->required()
                                             ->options([
@@ -132,6 +150,12 @@ class AdmissionResource extends Resource
                                             ])
                                             ->default('Active'),
                                     ]),
+                                Forms\Components\Hidden::make('registration_fee')
+                                    ->default(0.00),
+                                Forms\Components\Hidden::make('discount_amount')
+                                    ->default(0.00),
+                                Forms\Components\Hidden::make('final_fee')
+                                    ->default(0.00),
                                 Forms\Components\Hidden::make('id'),
                             ])
                             ->minItems(1)

@@ -230,11 +230,8 @@
                 <tr>
                     <td>
                         Course Fee - {{ $payment->admission->course->course_name }}
-                        @if($payment->fee_installment_id)
-                            (Installment No. {{ $payment->installment->installment_no }})
-                        @endif
                     </td>
-                    <td style="text-align: right;">Rs.{{ number_format($payment->installment ? $payment->installment->amount : $payment->amount_paid, 2) }}</td>
+                    <td style="text-align: right;">Rs.{{ number_format($payment->admission->final_fee, 2) }}</td>
                     <td style="text-align: right; font-weight: bold; color: #16a34a;">Rs.{{ number_format($payment->amount_paid, 2) }}</td>
                 </tr>
             </tbody>
@@ -260,7 +257,11 @@
                     <div class="totals-row" style="margin-top: 10px; border-top: 1px solid #cbd5e1;">
                         <span class="totals-label" style="font-size: 11px;">Outstanding Balance</span>
                         <span class="totals-val" style="font-size: 11px; color: #dc2626;">
-                            Rs.{{ number_format($payment->admission->installments()->sum('due_amount'), 2) }}
+                            @php
+                                $totalPaid = $payment->admission->payments()->sum('amount_paid');
+                                $outstanding = max(0.00, $payment->admission->final_fee - $totalPaid);
+                            @endphp
+                            Rs.{{ number_format($outstanding, 2) }}
                         </span>
                         <div class="clear"></div>
                     </div>

@@ -1,7 +1,7 @@
 @php
     $record = $this->getRecord();
-    $totalPaid = $record->installments()->sum('paid_amount');
-    $totalDue = $record->installments()->sum('due_amount');
+    $totalPaid = $record->payments()->sum('amount_paid');
+    $totalDue = max(0.00, $record->final_fee - $totalPaid);
     $attendancePct = $record->attendance_percentage;
     $statusColor = match ($record->status) {
         'Active' => 'success',
@@ -100,7 +100,7 @@
                     <!-- Tab Headers -->
                     <div class="flex border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-900">
                         <button @click="activeTab = 'installments'" :class="activeTab === 'installments' ? 'border-primary-500 text-primary-600' : 'border-transparent text-gray-500 hover:text-gray-700'" class="px-6 py-4 text-sm font-medium border-b-2 outline-none">
-                            Installments & Payments
+                            Payments & Receipts
                         </button>
                         <button @click="activeTab = 'attendance'" :class="activeTab === 'attendance' ? 'border-primary-500 text-primary-600' : 'border-transparent text-gray-500 hover:text-gray-700'" class="px-6 py-4 text-sm font-medium border-b-2 outline-none">
                             Attendance Logs
@@ -119,60 +119,32 @@
                         <div x-show="activeTab === 'installments'" class="space-y-6">
                             <div>
                                 <div class="flex items-center justify-between mb-4">
-                                    <h3 class="text-md font-bold text-gray-900 dark:text-white">Installment Breakdown</h3>
+                                    <h3 class="text-md font-bold text-gray-900 dark:text-white">Fee Summary</h3>
                                     <a href="{{ route('filament.admin.resources.fee-payments.index') }}?tableFilters[admission_id][value]={{ $record->id }}" class="text-sm text-primary-600 hover:underline">
                                         View Payment History
                                     </a>
                                 </div>
-                                <div class="overflow-x-auto">
-                                    <table class="w-full text-sm text-left text-gray-500 dark:text-gray-400">
-                                        <thead class="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-800 dark:text-gray-400">
-                                            <tr>
-                                                <th class="px-4 py-3">No</th>
-                                                <th class="px-4 py-3">Due Date</th>
-                                                <th class="px-4 py-3">Amount</th>
-                                                <th class="px-4 py-3">Paid</th>
-                                                <th class="px-4 py-3">Due</th>
-                                                <th class="px-4 py-3">Status</th>
-                                                <th class="px-4 py-3">Action</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            @foreach($record->installments as $inst)
-                                                <tr class="border-b dark:border-gray-800">
-                                                    <td class="px-4 py-3 font-semibold text-gray-900 dark:text-white">{{ $inst->installment_no }}</td>
-                                                    <td class="px-4 py-3">{{ $inst->due_date->format('Y-m-d') }}</td>
-                                                    <td class="px-4 py-3">₹{{ number_format($inst->amount, 2) }}</td>
-                                                    <td class="px-4 py-3">₹{{ number_format($inst->paid_amount, 2) }}</td>
-                                                    <td class="px-4 py-3">₹{{ number_format($inst->due_amount, 2) }}</td>
-                                                    <td class="px-4 py-3">
-                                                         @php
-                                                             $instColor = match($inst->status) {
-                                                                 'Paid' => 'success',
-                                                                 'Pending' => 'warning',
-                                                                 'Partial' => 'info',
-                                                                 'Overdue' => 'danger',
-                                                                 'Hold' => 'gray',
-                                                                 default => 'gray',
-                                                             };
-                                                         @endphp
-                                                         <span class="px-2 py-1 text-xs font-semibold rounded bg-{{ $instColor }}-100 text-{{ $instColor }}-800 dark:bg-{{ $instColor }}-500/10 dark:text-{{ $instColor }}-400">
-                                                             {{ $inst->status }}
-                                                         </span>
-                                                    </td>
-                                                    <td class="px-4 py-3">
-                                                         @if($inst->status !== 'Paid')
-                                                             <a href="{{ route('filament.admin.resources.fee-payments.index') }}/create?admission_id={{ $record->id }}&fee_installment_id={{ $inst->id }}&amount_paid={{ $inst->due_amount }}" class="text-sm font-semibold text-primary-600 hover:underline">
-                                                                 Record Pay
-                                                             </a>
-                                                         @else
-                                                             <span class="text-xs text-gray-400">Paid</span>
-                                                         @endif
-                                                    </td>
-                                                </tr>
-                                            @endforeach
-                                        </tbody>
-                                    </table>
+                                
+                                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                                    <div class="p-4 bg-gray-50 rounded-xl dark:bg-gray-800 border border-gray-100 dark:border-gray-700 shadow-sm">
+                                        <span class="text-xs text-gray-400 font-medium block">Total Course Fee</span>
+                                        <span class="text-lg font-bold text-gray-800 dark:text-white">₹{{ number_format($record->final_fee, 2) }}</span>
+                                    </div>
+                                    <div class="p-4 bg-gray-50 rounded-xl dark:bg-gray-800 border border-gray-100 dark:border-gray-700 shadow-sm">
+                                        <span class="text-xs text-gray-400 font-medium block">Total Paid</span>
+                                        <span class="text-lg font-bold text-success-600 dark:text-success-400">₹{{ number_format($totalPaid, 2) }}</span>
+                                    </div>
+                                    <div class="p-4 bg-gray-50 rounded-xl dark:bg-gray-800 border border-gray-100 dark:border-gray-700 shadow-sm flex justify-between items-center">
+                                        <div>
+                                            <span class="text-xs text-gray-400 font-medium block">Remaining Balance</span>
+                                            <span class="text-lg font-bold text-danger-600 dark:text-danger-400">₹{{ number_format($totalDue, 2) }}</span>
+                                        </div>
+                                        @if($totalDue > 0)
+                                            <a href="{{ route('filament.admin.resources.fee-payments.index') }}/create?admission_id={{ $record->id }}&amount_paid={{ $totalDue }}" class="px-3 py-1.5 text-xs font-semibold text-white bg-primary-600 hover:bg-primary-500 rounded-lg shadow transition-colors">
+                                                Record Payment
+                                            </a>
+                                        @endif
+                                    </div>
                                 </div>
                             </div>
 
@@ -187,7 +159,8 @@
                                             </div>
                                             <div class="flex items-center space-x-3">
                                                 <span class="text-sm font-bold text-success-600">₹{{ number_format($payment->amount_paid, 2) }}</span>
-                                                <a href="/admin/payments/{{ $payment->id }}/receipt" target="_blank" class="text-xs text-primary-600 font-semibold hover:underline">
+                                                <a href="/admin/payments/{{ $payment->id }}/receipt" target="_blank" class="text-xs text-primary-600 font-semibold hover:underline flex items-center gap-1">
+                                                    <svg class="w-4.5 h-4.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
                                                     Download PDF
                                                 </a>
                                             </div>

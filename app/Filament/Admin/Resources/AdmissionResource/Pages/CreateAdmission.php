@@ -38,57 +38,9 @@ class CreateAdmission extends CreateRecord
                 if ($index === 0) {
                     $firstAdmission = $admission;
                 }
-                
-                // Create installments immediately for this admission
-                $this->createInstallmentsFor($admission);
             }
         });
         
         return $firstAdmission;
-    }
-
-    protected function createInstallmentsFor(Admission $admission): void
-    {
-        $regFee = $admission->registration_fee;
-        $finalFee = $admission->final_fee;
-        
-        // Installment 1: Registration Fee due immediately
-        FeeInstallment::create([
-            'admission_id' => $admission->id,
-            'installment_no' => 1,
-            'due_date' => $admission->admission_date,
-            'amount' => $regFee,
-            'paid_amount' => 0.00,
-            'due_amount' => $regFee,
-            'status' => 'Pending',
-        ]);
-
-        // Installment 2 & 3: Split remaining balance into 2 monthly installments
-        $remaining = $finalFee - $regFee;
-        if ($remaining > 0) {
-            $instAmount = round($remaining / 2, 2);
-            
-            // Installment 2
-            FeeInstallment::create([
-                'admission_id' => $admission->id,
-                'installment_no' => 2,
-                'due_date' => date('Y-m-d', strtotime($admission->admission_date . ' + 30 days')),
-                'amount' => $instAmount,
-                'paid_amount' => 0.00,
-                'due_amount' => $instAmount,
-                'status' => 'Pending',
-            ]);
-
-            // Installment 3 (adjusts for rounding errors)
-            FeeInstallment::create([
-                'admission_id' => $admission->id,
-                'installment_no' => 3,
-                'due_date' => date('Y-m-d', strtotime($admission->admission_date . ' + 60 days')),
-                'amount' => $remaining - $instAmount,
-                'paid_amount' => 0.00,
-                'due_amount' => $remaining - $instAmount,
-                'status' => 'Pending',
-            ]);
-        }
     }
 }

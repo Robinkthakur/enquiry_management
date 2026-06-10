@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use App\Models\FeeInstallment;
 
 class FeePayment extends Model
 {
@@ -25,6 +26,24 @@ class FeePayment extends Model
         'amount_paid' => 'decimal:2',
     ];
 
+    public static function recalculateInstallment(string $installmentId): void
+    {
+        $inst = FeeInstallment::find($installmentId);
+        if ($inst) {
+            $totalPaid = self::where('fee_installment_id', $installmentId)->sum('amount_paid');
+            $inst->paid_amount = $totalPaid;
+            $inst->due_amount = max(0.00, $inst->amount - $totalPaid);
+            if ($inst->due_amount <= 0) {
+                $inst->status = 'Paid';
+            } elseif ($inst->paid_amount > 0) {
+                $inst->status = 'Partial';
+            } else {
+                $inst->status = 'Pending';
+            }
+            $inst->save();
+        }
+    }
+
     protected static function booted()
     {
         static::creating(function ($payment) {
@@ -40,20 +59,37 @@ class FeePayment extends Model
             }
         });
 
+        static::saving(function ($payment) {
+            if ($payment->isDirty('admission_id') || empty($payment->fee_installment_id)) {
+                if ($payment->admission_id) {
+                    $installment = FeeInstallment::where('admission_id', $payment->admission_id)
+                        ->orderBy('installment_no', 'asc')
+                        ->first();
+                    if ($installment) {
+                        $payment->fee_installment_id = $installment->id;
+                    }
+                }
+            }
+        });
+
         static::created(function ($payment) {
             if ($payment->fee_installment_id) {
-                $inst = $payment->installment;
-                if ($inst) {
-                    $inst->paid_amount += $payment->amount_paid;
-                    $inst->due_amount = max(0.00, $inst->amount - $inst->paid_amount);
-                    
-                    if ($inst->due_amount <= 0) {
-                        $inst->status = 'Paid';
-                    } else {
-                        $inst->status = 'Partial';
-                    }
-                    $inst->save();
-                }
+                self::recalculateInstallment($payment->fee_installment_id);
+            }
+        });
+
+        static::updated(function ($payment) {
+            if ($payment->fee_installment_id) {
+                self::recalculateInstallment($payment->fee_installment_id);
+            }
+            if ($payment->isDirty('fee_installment_id') && $payment->getOriginal('fee_installment_id')) {
+                self::recalculateInstallment($payment->getOriginal('fee_installment_id'));
+            }
+        });
+
+        static::deleted(function ($payment) {
+            if ($payment->fee_installment_id) {
+                self::recalculateInstallment($payment->fee_installment_id);
             }
         });
     }

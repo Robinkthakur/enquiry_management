@@ -71,6 +71,41 @@ class Admission extends Model
                 $admission->roll_no = 'ROLL-' . $year . '-' . str_pad($numRoll, 5, '0', STR_PAD_LEFT);
             }
         });
+
+        static::created(function ($admission) {
+            if ($admission->installments()->count() === 0) {
+                $admission->installments()->create([
+                    'installment_no' => 1,
+                    'due_date' => $admission->admission_date,
+                    'amount' => $admission->final_fee,
+                    'paid_amount' => 0.00,
+                    'due_amount' => $admission->final_fee,
+                    'status' => 'Pending',
+                ]);
+            }
+        });
+
+        static::updated(function ($admission) {
+            if ($admission->wasChanged(['final_fee', 'admission_date'])) {
+                $installment = $admission->installments()->first();
+                if ($installment) {
+                    $installment->amount = $admission->final_fee;
+                    $installment->due_date = $admission->admission_date;
+                    // Recalculate based on existing payments
+                    $totalPaid = $admission->payments()->sum('amount_paid');
+                    $installment->paid_amount = $totalPaid;
+                    $installment->due_amount = max(0.00, $admission->final_fee - $totalPaid);
+                    if ($installment->due_amount <= 0) {
+                        $installment->status = 'Paid';
+                    } elseif ($installment->paid_amount > 0) {
+                        $installment->status = 'Partial';
+                    } else {
+                        $installment->status = 'Pending';
+                    }
+                    $installment->save();
+                }
+            }
+        });
     }
 
     public function getActivitylogOptions(): LogOptions

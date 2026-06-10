@@ -93,12 +93,6 @@ class StudentManagementSystemTest extends TestCase
 
         // 3. Trigger conversion logic (mimic the action performed in EnquiryResource)
         $admissionDate = now()->toDateString();
-        $discountAmount = 50.00;
-        $installmentsCount = 3;
-
-        $totalFee = $course->total_fee + $course->registration_fee;
-        $finalFee = $totalFee - $discountAmount;
-        $regFee = $course->registration_fee;
 
         $admission = Admission::create([
             'enquiry_id' => $enquiry->id,
@@ -111,61 +105,24 @@ class StudentManagementSystemTest extends TestCase
             'time_slot' => '10:00 AM - 12:00 PM',
             'instructor_id' => $instructor->id,
             'admission_date' => $admissionDate,
-            'total_fee' => $totalFee,
-            'discount_amount' => $discountAmount,
-            'final_fee' => $finalFee,
-            'registration_fee' => $regFee,
+            'total_fee' => $course->total_fee,
+            'discount_amount' => 0.00,
+            'final_fee' => $course->total_fee,
+            'registration_fee' => 0.00,
             'status' => 'Active',
         ]);
-
-        // Installment 1: Registration Fee
-        FeeInstallment::create([
-            'admission_id' => $admission->id,
-            'installment_no' => 1,
-            'due_date' => $admissionDate,
-            'amount' => $regFee,
-            'paid_amount' => 0.00,
-            'due_amount' => $regFee,
-            'status' => 'Pending',
-        ]);
-
-        // Installment 2 & 3: Remaining fees
-        $remainingFee = $finalFee - $regFee;
-        $instAmount = round($remainingFee / ($installmentsCount - 1), 2);
-
-        for ($i = 2; $i <= $installmentsCount; $i++) {
-            $dueDate = date('Y-m-d', strtotime($admissionDate . ' + ' . (($i - 1) * 30) . ' days'));
-            if ($i === $installmentsCount) {
-                $prevSum = $instAmount * ($installmentsCount - 2);
-                $instAmount = $remainingFee - $prevSum;
-            }
-
-            FeeInstallment::create([
-                'admission_id' => $admission->id,
-                'installment_no' => $i,
-                'due_date' => $dueDate,
-                'amount' => $instAmount,
-                'paid_amount' => 0.00,
-                'due_amount' => $instAmount,
-                'status' => 'Pending',
-            ]);
-        }
 
         $enquiry->update(['status' => 'Admitted']);
 
         // Assertions
         $this->assertEquals('Admitted', $enquiry->fresh()->status);
         $this->assertEquals('Active', $admission->fresh()->status);
-        $this->assertEquals(3, $admission->installments()->count());
+        $this->assertEquals(1, $admission->installments()->count());
 
-        // Installment 1 details
-        $inst1 = $admission->installments()->where('installment_no', 1)->first();
-        $this->assertEquals($regFee, $inst1->amount);
+        // Single installment details
+        $inst1 = $admission->installments()->first();
+        $this->assertEquals($course->total_fee, $inst1->amount);
         $this->assertEquals($admissionDate, $inst1->due_date->toDateString());
-
-        // Installment 2 & 3 sums
-        $sum = $admission->installments()->whereIn('installment_no', [2, 3])->sum('amount');
-        $this->assertEquals($remainingFee, $sum);
     }
 
     /**
@@ -399,22 +356,26 @@ class StudentManagementSystemTest extends TestCase
                     [
                         'id' => $admission->id,
                         'course_id' => $admission->course_id,
+                        'start_time' => '10:00 AM',
+                        'end_time' => '12:00 PM',
                         'time_slot' => '10:00 AM - 12:00 PM',
                         'instructor_id' => $admission->instructor_id,
                         'total_fee' => 1000,
-                        'registration_fee' => 100,
+                        'registration_fee' => 0,
                         'discount_amount' => 0,
                         'final_fee' => 1000,
                         'status' => 'Active',
                     ],
                     [
                         'course_id' => $course2->id,
+                        'start_time' => '02:00 PM',
+                        'end_time' => '04:00 PM',
                         'time_slot' => '02:00 PM - 04:00 PM',
                         'instructor_id' => $instructor->id,
                         'total_fee' => 1200,
-                        'registration_fee' => 150,
-                        'discount_amount' => 50,
-                        'final_fee' => 1150,
+                        'registration_fee' => 0,
+                        'discount_amount' => 0,
+                        'final_fee' => 1200,
                         'status' => 'Active',
                     ]
                 ]
@@ -431,7 +392,7 @@ class StudentManagementSystemTest extends TestCase
         $newCourseAdmission = Admission::where('mobile', $admission->mobile)->where('course_id', $course2->id)->first();
         $this->assertNotNull($newCourseAdmission);
         $this->assertEquals('02:00 PM - 04:00 PM', $newCourseAdmission->time_slot);
-        $this->assertEquals(1150, $newCourseAdmission->final_fee);
+        $this->assertEquals(1200, $newCourseAdmission->final_fee);
     }
 
     /**
