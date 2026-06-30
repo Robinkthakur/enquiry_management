@@ -71,8 +71,8 @@ class FeeInstallmentResource extends Resource
                     ->label('Student')
                     ->searchable()
                     ->sortable(),
-                Tables\Columns\TextColumn::make('admission.roll_no')
-                    ->label('Roll No')
+                Tables\Columns\TextColumn::make('admission.admission_no')
+                    ->label('Admission No')
                     ->searchable(),
                 Tables\Columns\TextColumn::make('installment_no')
                     ->label('Inst No')
@@ -126,11 +126,63 @@ class FeeInstallmentResource extends Resource
                             'fee_installment_id' => $record->id,
                             'amount_paid' => $record->due_amount
                         ])),
+
+                    // Send FCM Fee Reminder Action
+                    Actions\Action::make('send_reminder')
+                        ->label('Send FCM Reminder')
+                        ->color('warning')
+                        ->icon('heroicon-o-paper-airplane')
+                        ->visible(fn (FeeInstallment $record) => $record->status !== 'Paid')
+                        ->form([
+                            Forms\Components\TextInput::make('title')
+                                ->required()
+                                ->default(fn (FeeInstallment $record) => 'Fee Installment Due Reminder'),
+                            Forms\Components\Textarea::make('message')
+                                ->required()
+                                ->rows(3)
+                                ->default(fn (FeeInstallment $record) => "Dear " . ($record->admission->student_name ?? 'Student') . ",\n\nThis is a reminder that installment #" . $record->installment_no . " of amount ₹" . number_format($record->due_amount, 2) . " is due. Please clear it soon."),
+                        ])
+                        ->action(function (FeeInstallment $record, array $data): void {
+                            $user = $record->admission->user ?? null;
+                            if (!$user) {
+                                \Filament\Notifications\Notification::make()
+                                    ->title('Error')
+                                    ->body('Student user account not found to send notification.')
+                                    ->danger()
+                                    ->send();
+                                return;
+                            }
+
+                            $firebaseService = app(\App\Services\FirebaseService::class);
+                            $results = $firebaseService->sendToUser($user, $data['title'], $data['message'], [
+                                'type' => 'fee_reminder',
+                                'installment_id' => $record->id,
+                                'due_amount' => (string) $record->due_amount
+                            ]);
+
+                            $tokensCount = count($results);
+                            $successCount = count(array_filter($results));
+
+                            if ($tokensCount === 0) {
+                                \Filament\Notifications\Notification::make()
+                                    ->title('No Registered Devices')
+                                    ->body('The student has no registered FCM tokens for push notifications.')
+                                    ->warning()
+                                    ->send();
+                            } else {
+                                \Filament\Notifications\Notification::make()
+                                    ->title('Reminder Sent')
+                                    ->body("Reminder successfully sent to {$successCount} of {$tokensCount} active device(s).")
+                                    ->success()
+                                    ->send();
+                            }
+                        }),
                 ]),
             ])
             ->bulkActions([
                 //
-            ]);
+            ])
+            ->defaultSort('created_at', 'desc');
     }
 
     public static function getPages(): array

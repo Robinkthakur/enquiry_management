@@ -5,15 +5,17 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
-use Spatie\Activitylog\Models\Concerns\LogsActivity;
-use Spatie\Activitylog\Support\LogOptions;
+// use Spatie\Activitylog\Models\Concerns\LogsActivity;
+// use Spatie\Activitylog\Support\LogOptions;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 
 class Admission extends Model
 {
-    use HasUuids, SoftDeletes, LogsActivity, Notifiable;
+    use HasUuids, SoftDeletes, Notifiable;
 
     protected $fillable = [
         'admission_no',
@@ -25,95 +27,116 @@ class Admission extends Model
         'mobile',
         'email',
         'address',
-        'course_id',
-        'time_slot',
-        'instructor_id',
         'admission_date',
-        'total_fee',
-        'discount_amount',
-        'final_fee',
-        'registration_fee',
         'status',
+        'user_id',
+        'documents',
     ];
 
     protected $casts = [
         'admission_date' => 'date',
-        'total_fee' => 'decimal:2',
-        'discount_amount' => 'decimal:2',
-        'final_fee' => 'decimal:2',
-        'registration_fee' => 'decimal:2',
+        'documents' => 'array',
     ];
 
     protected static function booted()
     {
         static::creating(function ($admission) {
             $year = now()->year;
-            
-            // Generate Admission No
-            if (empty($admission->admission_no)) {
-                $latestAdm = self::where('admission_no', 'like', "ADM-{$year}-%")->latest('created_at')->first();
-                if ($latestAdm) {
-                    $numAdm = intval(substr($latestAdm->admission_no, -5)) + 1;
-                } else {
-                    $numAdm = 1;
-                }
-                $admission->admission_no = 'ADM-' . $year . '-' . str_pad($numAdm, 5, '0', STR_PAD_LEFT);
-            }
+            $admission->admission_no = $admission->admission_no ?: 'ADM-' . $year . '-' . str_pad(self::count() + 1, 5, '0', STR_PAD_LEFT);
+            $admission->roll_no = $admission->roll_no ?: 'ROLL-' . $year . '-' . str_pad(self::count() + 1, 5, '0', STR_PAD_LEFT);
 
-            // Generate Roll No
-            if (empty($admission->roll_no)) {
-                $latestRoll = self::where('roll_no', 'like', "ROLL-{$year}-%")->latest('created_at')->first();
-                if ($latestRoll) {
-                    $numRoll = intval(substr($latestRoll->roll_no, -5)) + 1;
-                } else {
-                    $numRoll = 1;
+            // Auto-create/Link Student User Account
+            if (!empty($admission->email)) {
+                $user = User::where('email', $admission->email)->first();
+                if (!$user) {
+                    $user = User::create([
+                        'name' => $admission->student_name,
+                        'email' => $admission->email,
+                        'password' => Hash::make($admission->mobile),
+                    ]);
+                    $user->assignRole('Student');
                 }
-                $admission->roll_no = 'ROLL-' . $year . '-' . str_pad($numRoll, 5, '0', STR_PAD_LEFT);
+                $admission->user_id = $user->id;
             }
         });
 
-        static::created(function ($admission) {
-            if ($admission->installments()->count() === 0) {
-                $admission->installments()->create([
-                    'installment_no' => 1,
-                    'due_date' => $admission->admission_date,
-                    'amount' => $admission->final_fee,
-                    'paid_amount' => 0.00,
-                    'due_amount' => $admission->final_fee,
-                    'status' => 'Pending',
-                ]);
-            }
-        });
-
-        static::updated(function ($admission) {
-            if ($admission->wasChanged(['final_fee', 'admission_date'])) {
-                $installment = $admission->installments()->first();
-                if ($installment) {
-                    $installment->amount = $admission->final_fee;
-                    $installment->due_date = $admission->admission_date;
-                    // Recalculate based on existing payments
-                    $totalPaid = $admission->payments()->sum('amount_paid');
-                    $installment->paid_amount = $totalPaid;
-                    $installment->due_amount = max(0.00, $admission->final_fee - $totalPaid);
-                    if ($installment->due_amount <= 0) {
-                        $installment->status = 'Paid';
-                    } elseif ($installment->paid_amount > 0) {
-                        $installment->status = 'Partial';
-                    } else {
-                        $installment->status = 'Pending';
+        static::updating(function ($admission) {
+            if (!$admission->user_id) {
+                if (!empty($admission->email)) {
+                    $user = User::where('email', $admission->email)->first();
+                    if (!$user) {
+                        $user = User::create([
+                            'name' => $admission->student_name,
+                            'email' => $admission->email,
+                            'password' => Hash::make($admission->mobile),
+                        ]);
+                        $user->assignRole('Student');
                     }
-                    $installment->save();
+                    $admission->user_id = $user->id;
+                }
+            } else {
+                if ($admission->isDirty('email') || $admission->isDirty('student_name')) {
+                    $user = User::find($admission->user_id);
+                    if ($user) {
+                        $user->update([
+                            'email' => $admission->email,
+                            'name' => $admission->student_name,
+                        ]);
+                    }
                 }
             }
         });
     }
 
-    public function getActivitylogOptions(): LogOptions
+    // Accessors for Backwards Compatibility
+    public function getFinalFeeAttribute(): float
     {
-        return LogOptions::defaults()
-            ->logAll()
-            ->logOnlyDirty()
-            ->dontLogEmptyChanges();
+        return (float) $this->enrollments()->sum('final_fee');
+    }
+
+    public function getTotalFeeAttribute(): float
+    {
+        return (float) $this->enrollments()->sum('total_fee');
+    }
+
+    public function getDiscountAmountAttribute(): float
+    {
+        return (float) $this->enrollments()->sum('discount_amount');
+    }
+
+    public function getRegistrationFeeAttribute(): float
+    {
+        return (float) $this->enrollments()->sum('registration_fee');
+    }
+
+    public function getCourseAttribute()
+    {
+        $first = $this->enrollments()->first();
+        return $first ? $first->course : null;
+    }
+
+    public function getTimeSlotAttribute()
+    {
+        $first = $this->enrollments()->first();
+        return $first ? $first->time_slot : null;
+    }
+
+    public function getInstructorAttribute()
+    {
+        $first = $this->enrollments()->first();
+        return $first ? $first->instructor : null;
+    }
+
+    public function getCourseIdAttribute()
+    {
+        $first = $this->enrollments()->first();
+        return $first ? $first->course_id : null;
+    }
+
+    public function getInstructorIdAttribute()
+    {
+        $first = $this->enrollments()->first();
+        return $first ? $first->instructor_id : null;
     }
 
     public function enquiry(): BelongsTo
@@ -121,15 +144,33 @@ class Admission extends Model
         return $this->belongsTo(Enquiry::class);
     }
 
-    public function course(): BelongsTo
+    public function enrollments(): HasMany
     {
-        return $this->belongsTo(Course::class);
+        return $this->hasMany(AdmissionCourse::class, 'admission_id');
     }
 
+    public function courses()
+    {
+        return $this->belongsToMany(Course::class, 'admission_courses', 'admission_id', 'course_id')
+                    ->withPivot(['id', 'time_slot', 'instructor_id', 'total_fee', 'discount_amount', 'final_fee', 'registration_fee', 'status'])
+                    ->withTimestamps();
+    }
 
     public function instructor(): BelongsTo
     {
+        // Keeping this for relations but we'll return instructor of the first course via accessor if accessed as property.
+        // For query builders, whereHas('instructor') might fail or need custom handling.
         return $this->belongsTo(User::class, 'instructor_id');
+    }
+
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'user_id');
+    }
+
+    public function leaveApplications(): HasMany
+    {
+        return $this->hasMany(LeaveApplication::class, 'admission_id');
     }
 
     public function installments(): HasMany

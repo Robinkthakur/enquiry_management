@@ -77,7 +77,8 @@ class ActivityLogResource extends Resource
             ])
             ->bulkActions([
                 // Read-only, no bulk deletions
-            ]);
+            ])
+            ->defaultSort('created_at', 'desc');
     }
 
     public static function getPages(): array

@@ -4,6 +4,7 @@ namespace App\Filament\Admin\Pages;
 
 use App\Models\Course;
 use App\Models\Admission;
+use App\Models\AdmissionCourse;
 use App\Models\Attendance;
 use Filament\Pages\Page;
 use Filament\Schemas\Schema;
@@ -22,10 +23,9 @@ class MarkAttendance extends Page implements Forms\Contracts\HasForms
 
     protected string $view = 'filament.admin.pages.mark-attendance';
 
-    public ?string $course_id = null;
-    public ?string $time_slot = null;
     public ?string $attendance_date = null;
-    public array $attendance_statuses = []; // [admission_id => status]
+    public array $attendance_statuses = []; // [admission_course_id => status]
+    public ?string $search = '';
 
     public function mount(): void
     {
@@ -33,89 +33,44 @@ class MarkAttendance extends Page implements Forms\Contracts\HasForms
         $this->form->fill([
             'attendance_date' => $this->attendance_date,
         ]);
+        $this->loadStudents();
     }
 
     public function form(Schema $form): Schema
     {
-        $coursesQuery = Course::where('status', 'active');
-        if (auth()->user()->hasRole('Instructor')) {
-            $coursesQuery->whereHas('admissions', function ($q) {
-                $q->where('instructor_id', auth()->id())->where('status', 'Active');
-            });
-        }
-
         return $form
             ->schema([
-                Grid::make(3)
-                    ->schema([
-                        Forms\Components\Select::make('course_id')
-                            ->label('Select Course')
-                            ->required()
-                            ->options($coursesQuery->pluck('course_name', 'id'))
-                            ->reactive()
-                            ->afterStateUpdated(function ($state, callable $set) {
-                                $this->course_id = $state;
-                                $set('time_slot', null);
-                                $this->time_slot = null;
-                                $this->loadStudents();
-                            }),
-                        Forms\Components\Select::make('time_slot')
-                            ->label('Select Time Slot')
-                            ->required()
-                            ->options(function (callable $get) {
-                                $courseId = $get('course_id');
-                                if (!$courseId) {
-                                    return [];
-                                }
-                                $query = Admission::where('course_id', $courseId)
-                                    ->where('status', 'Active')
-                                    ->whereNotNull('time_slot');
-                                if (auth()->user()->hasRole('Instructor')) {
-                                    $query->where('instructor_id', auth()->id());
-                                }
-                                return $query->distinct()->pluck('time_slot', 'time_slot')->toArray();
-                            })
-                            ->reactive()
-                            ->afterStateUpdated(function ($state) {
-                                $this->time_slot = $state;
-                                $this->loadStudents();
-                            }),
-                        Forms\Components\DatePicker::make('attendance_date')
-                            ->label('Date')
-                            ->required()
-                            ->default(now())
-                            ->reactive()
-                            ->afterStateUpdated(fn ($state) => $this->loadExistingAttendance()),
-                    ])
+                Forms\Components\DatePicker::make('attendance_date')
+                    ->label('Date')
+                    ->required()
+                    ->default(now())
+                    ->reactive()
+                    ->afterStateUpdated(fn ($state) => $this->loadExistingAttendance()),
             ]);
     }
 
     public function loadStudents(): void
     {
         $this->attendance_statuses = [];
-        if (!$this->course_id || !$this->time_slot) {
-            return;
-        }
 
-        $query = Admission::where('course_id', $this->course_id)
-            ->where('time_slot', $this->time_slot)
+        $query = AdmissionCourse::with('admission')
             ->where('status', 'Active');
             
         if (auth()->user()->hasRole('Instructor')) {
             $query->where('instructor_id', auth()->id());
         }
         
-        $students = $query->get();
+        $enrollments = $query->get();
         
-        $studentIds = $students->pluck('id')->toArray();
+        $enrollmentIds = $enrollments->pluck('id')->toArray();
         
-        $existing = Attendance::whereIn('admission_id', $studentIds)
+        $existing = Attendance::whereIn('admission_course_id', $enrollmentIds)
             ->where('attendance_date', $this->attendance_date)
-            ->pluck('status', 'admission_id')
+            ->pluck('status', 'admission_course_id')
             ->toArray();
 
-        foreach ($students as $student) {
-            $this->attendance_statuses[$student->id] = $existing[$student->id] ?? 'Present';
+        foreach ($enrollments as $enrollment) {
+            $this->attendance_statuses[$enrollment->id] = $existing[$enrollment->id] ?? 'Present';
         }
     }
 
@@ -123,22 +78,23 @@ class MarkAttendance extends Page implements Forms\Contracts\HasForms
     {
         $state = $this->form->getState();
         $this->attendance_date = $state['attendance_date'] ?? now()->format('Y-m-d');
-        $this->course_id = $state['course_id'] ?? null;
-        $this->time_slot = $state['time_slot'] ?? null;
         $this->loadStudents();
     }
 
     public function getStudentsProperty()
     {
-        if (!$this->course_id || !$this->time_slot) {
-            return collect();
-        }
-        $query = Admission::where('course_id', $this->course_id)
-            ->where('time_slot', $this->time_slot)
+        $query = AdmissionCourse::with('admission')
             ->where('status', 'Active');
             
         if (auth()->user()->hasRole('Instructor')) {
             $query->where('instructor_id', auth()->id());
+        }
+
+        if (filled($this->search)) {
+            $query->whereHas('admission', function ($q) {
+                $q->where('student_name', 'like', '%' . $this->search . '%')
+                  ->orWhere('admission_no', 'like', '%' . $this->search . '%');
+            });
         }
         
         return $query->get();
@@ -151,24 +107,23 @@ class MarkAttendance extends Page implements Forms\Contracts\HasForms
 
     public function save(): void
     {
-        if (!$this->course_id || !$this->time_slot) {
-            Notification::make()->title('Please select course and time slot first.')->danger()->send();
-            return;
-        }
-
         $state = $this->form->getState();
         $date = $state['attendance_date'] ?? now()->format('Y-m-d');
 
-        foreach ($this->attendance_statuses as $studentId => $status) {
-            Attendance::updateOrCreate(
-                [
-                    'admission_id' => $studentId,
-                    'attendance_date' => $date,
-                ],
-                [
-                    'status' => $status,
-                ]
-            );
+        foreach ($this->attendance_statuses as $enrollmentId => $status) {
+            $enrollment = AdmissionCourse::find($enrollmentId);
+            if ($enrollment) {
+                Attendance::updateOrCreate(
+                    [
+                        'admission_course_id' => $enrollmentId,
+                        'attendance_date' => $date,
+                    ],
+                    [
+                        'admission_id' => $enrollment->admission_id,
+                        'status' => $status,
+                    ]
+                );
+            }
         }
 
         Notification::make()

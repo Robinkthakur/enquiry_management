@@ -6,27 +6,27 @@ use App\Models\User;
 
 class UserPolicy
 {
-    public function viewAny(User $user): bool
+    public function viewAny($user): bool
     {
         return $user->hasRole('Super Admin') || $user->hasRole('Admin');
     }
 
-    public function view(User $user, User $model): bool
+    public function view($user, User $model): bool
     {
         return $user->hasRole('Super Admin') || $user->hasRole('Admin');
     }
 
-    public function create(User $user): bool
+    public function create($user): bool
     {
         return $user->hasRole('Super Admin') || $user->hasRole('Admin');
     }
 
-    public function update(User $user, User $model): bool
+    public function update($user, User $model): bool
     {
         return $user->hasRole('Super Admin') || $user->hasRole('Admin');
     }
 
-    public function delete(User $user, User $model): bool
+    public function delete($user, User $model): bool
     {
         if ($model->hasRole('Super Admin')) {
             return false;

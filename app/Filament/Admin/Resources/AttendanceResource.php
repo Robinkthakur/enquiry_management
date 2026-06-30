@@ -4,7 +4,7 @@ namespace App\Filament\Admin\Resources;
 
 use App\Filament\Admin\Resources\AttendanceResource\Pages;
 use App\Models\Attendance;
-use App\Models\Admission;
+use App\Models\AdmissionCourse;
 use Filament\Forms;
 use Filament\Schemas\Schema;
 use Filament\Schemas\Components\Section;
@@ -27,18 +27,31 @@ class AttendanceResource extends Resource
             ->schema([
                 Section::make()
                     ->schema([
-                        Forms\Components\Select::make('admission_id')
-                            ->label('Student')
+                        Forms\Components\Select::make('admission_course_id')
+                            ->label('Student Course Enrollment')
                             ->options(function () {
-                                return Admission::where('status', 'Active')
+                                return AdmissionCourse::where('status', 'Active')
+                                    ->with(['admission', 'course'])
                                     ->get()
-                                    ->mapWithKeys(function ($admission) {
-                                        $label = "{$admission->student_name} ({$admission->course->course_code} - " . ($admission->time_slot ?: 'No Slot') . ")";
-                                        return [$admission->id => $label];
+                                    ->mapWithKeys(function ($enrollment) {
+                                        $label = "{$enrollment->admission->student_name} - {$enrollment->course->course_code} (" . ($enrollment->time_slot ?: 'No Slot') . ")";
+                                        return [$enrollment->id => $label];
                                     })->toArray();
                             })
                             ->required()
-                            ->searchable(),
+                            ->searchable()
+                            ->reactive()
+                            ->afterStateUpdated(function ($state, callable $set) {
+                                if ($state) {
+                                    $enrollment = AdmissionCourse::find($state);
+                                    if ($enrollment) {
+                                        $set('admission_id', $enrollment->admission_id);
+                                    }
+                                } else {
+                                    $set('admission_id', null);
+                                }
+                            }),
+                        Forms\Components\Hidden::make('admission_id'),
                         Forms\Components\DatePicker::make('attendance_date')
                             ->required()
                             ->default(now()),
@@ -65,6 +78,9 @@ class AttendanceResource extends Resource
                     ->label('Student')
                     ->searchable()
                     ->sortable(),
+                Tables\Columns\TextColumn::make('enrollment.course.course_code')
+                    ->label('Course')
+                    ->sortable(),
                 Tables\Columns\TextColumn::make('status')
                     ->badge()
                     ->color(fn (string $state): string => match ($state) {
@@ -78,7 +94,7 @@ class AttendanceResource extends Resource
             ->filters([
                 Tables\Filters\SelectFilter::make('course_id')
                     ->label('Course')
-                    ->relationship('student.course', 'course_name'),
+                    ->relationship('enrollment.course', 'course_name'),
                 Tables\Filters\SelectFilter::make('status')
                     ->options([
                         'Present' => 'Present',
@@ -96,7 +112,8 @@ class AttendanceResource extends Resource
                 Actions\BulkActionGroup::make([
                     Actions\DeleteBulkAction::make(),
                 ]),
-            ]);
+            ])
+            ->defaultSort('created_at', 'desc');
     }
 
     public static function getRelations(): array
@@ -123,7 +140,7 @@ class AttendanceResource extends Resource
         $query = parent::getEloquentQuery();
 
         if (auth()->check() && auth()->user()->hasRole('Instructor')) {
-            return $query->whereHas('student', function ($q) {
+            return $query->whereHas('enrollment', function ($q) {
                 $q->where('instructor_id', auth()->id());
             });
         }

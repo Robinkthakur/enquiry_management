@@ -232,7 +232,7 @@ class EnquiryResource extends Resource
                                         }),
                                     Forms\Components\Select::make('instructor_id')
                                         ->label('Assigned Instructor')
-                                        ->options(User::role('Instructor')->pluck('name', 'id'))
+                                        ->options(\App\Models\Admin::role('Instructor')->pluck('name', 'id'))
                                         ->searchable()
                                         ->required(),
                                     Forms\Components\TextInput::make('total_fee')
@@ -243,28 +243,32 @@ class EnquiryResource extends Resource
                                     Forms\Components\Hidden::make('time_slot'),
                                 ])
                                 ->minItems(1)
-                                ->columns(2),
                         ])
                         ->action(function (Enquiry $record, array $data) {
                             DB::transaction(function () use ($record, $data) {
                                 $admissionDate = $data['admission_date'];
                                 
+                                // Create single student profile (Admission)
+                                $admission = Admission::create([
+                                    'enquiry_id' => $record->id,
+                                    'student_name' => $record->name,
+                                    'father_name' => $record->father_name,
+                                    'mobile' => $record->mobile,
+                                    'email' => $record->email,
+                                    'address' => $record->address,
+                                    'admission_date' => $admissionDate,
+                                    'status' => 'Active',
+                                ]);
+                                
                                 foreach ($data['enrollments'] as $enrollment) {
                                     $course = Course::findOrFail($enrollment['course_id']);
                                     $fee = floatval($enrollment['total_fee'] ?? $course->total_fee);
 
-                                    // Create Admission
-                                    Admission::create([
-                                        'enquiry_id' => $record->id,
-                                        'student_name' => $record->name,
-                                        'father_name' => $record->father_name,
-                                        'mobile' => $record->mobile,
-                                        'email' => $record->email,
-                                        'address' => $record->address,
+                                    // Create enrollment in admission_courses
+                                    $admission->enrollments()->create([
                                         'course_id' => $course->id,
                                         'time_slot' => $enrollment['time_slot'],
                                         'instructor_id' => $enrollment['instructor_id'],
-                                        'admission_date' => $admissionDate,
                                         'total_fee' => $fee,
                                         'discount_amount' => 0.00,
                                         'final_fee' => $fee,
@@ -289,7 +293,8 @@ class EnquiryResource extends Resource
                 Actions\BulkActionGroup::make([
                     Actions\DeleteBulkAction::make(),
                 ]),
-            ]);
+            ])
+            ->defaultSort('created_at', 'desc');
     }
 
     public static function getRelations(): array

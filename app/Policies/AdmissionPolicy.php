@@ -7,37 +7,37 @@ use App\Models\Admission;
 
 class AdmissionPolicy
 {
-    public function viewAny(User $user): bool
+    public function viewAny($user): bool
     {
         return $user->hasPermissionTo('admissions.view');
     }
 
-    public function view(User $user, Admission $admission): bool
+    public function view($user, Admission $admission): bool
     {
         return $user->hasPermissionTo('admissions.view');
     }
 
-    public function create(User $user): bool
+    public function create($user): bool
     {
         return $user->hasPermissionTo('admissions.create');
     }
 
-    public function update(User $user, Admission $admission): bool
+    public function update($user, Admission $admission): bool
     {
         return $user->hasPermissionTo('admissions.update');
     }
 
-    public function delete(User $user, Admission $admission): bool
+    public function delete($user, Admission $admission): bool
     {
         return $user->hasPermissionTo('admissions.delete');
     }
 
-    public function restore(User $user, Admission $admission): bool
+    public function restore($user, Admission $admission): bool
     {
         return $user->hasPermissionTo('admissions.delete');
     }
 
-    public function forceDelete(User $user, Admission $admission): bool
+    public function forceDelete($user, Admission $admission): bool
     {
         return $user->hasPermissionTo('admissions.delete');
     }

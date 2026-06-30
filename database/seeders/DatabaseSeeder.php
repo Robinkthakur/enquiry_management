@@ -7,6 +7,7 @@ use App\Models\Course;
 use App\Models\Enquiry;
 use App\Models\EnquiryTimeline;
 use App\Models\Admission;
+use App\Models\AdmissionCourse;
 use App\Models\FeeInstallment;
 use App\Models\FeePayment;
 use App\Models\CompanySetting;
@@ -114,7 +115,7 @@ class DatabaseSeeder extends Seeder
 
         $createdUsers = [];
         foreach ($usersData as $data) {
-            $user = User::firstOrCreate(
+            $user = \App\Models\Admin::firstOrCreate(
                 ['email' => $data['email']],
                 [
                     'name' => $data['name'],
@@ -266,10 +267,15 @@ class DatabaseSeeder extends Seeder
             'mobile' => $admittedEnquiry->mobile,
             'email' => $admittedEnquiry->email,
             'address' => $admittedEnquiry->address,
+            'admission_date' => '2026-06-03',
+            'status' => 'Active',
+        ]);
+
+        $enrollment = AdmissionCourse::create([
+            'admission_id' => $admission->id,
             'course_id' => $course->id,
             'time_slot' => '06:00 PM - 08:00 PM',
             'instructor_id' => $instructorBeta->id,
-            'admission_date' => '2026-06-03',
             'total_fee' => $course->total_fee + $course->registration_fee,
             'discount_amount' => 100.00,
             'final_fee' => ($course->total_fee + $course->registration_fee) - 100.00,
@@ -281,6 +287,7 @@ class DatabaseSeeder extends Seeder
         // Installment 1: Registration Fee due immediately (Paid)
         $inst1 = FeeInstallment::create([
             'admission_id' => $admission->id,
+            'admission_course_id' => $enrollment->id,
             'installment_no' => 1,
             'due_date' => '2026-06-03',
             'amount' => $course->registration_fee,
@@ -290,9 +297,10 @@ class DatabaseSeeder extends Seeder
         ]);
 
         // Installment 2: Half of remaining final fee due in 1 month (Pending)
-        $remainingFee = $admission->final_fee - $course->registration_fee;
+        $remainingFee = $enrollment->final_fee - $course->registration_fee;
         $inst2 = FeeInstallment::create([
             'admission_id' => $admission->id,
+            'admission_course_id' => $enrollment->id,
             'installment_no' => 2,
             'due_date' => '2026-07-03',
             'amount' => $remainingFee / 2,
@@ -304,6 +312,7 @@ class DatabaseSeeder extends Seeder
         // Installment 3: Other half due in 2 months (Pending)
         $inst3 = FeeInstallment::create([
             'admission_id' => $admission->id,
+            'admission_course_id' => $enrollment->id,
             'installment_no' => 3,
             'due_date' => '2026-08-03',
             'amount' => $remainingFee / 2,

@@ -7,27 +7,27 @@ use App\Models\Certificate;
 
 class CertificatePolicy
 {
-    public function viewAny(User $user): bool
+    public function viewAny($user): bool
     {
         return $user->hasPermissionTo('certificates.view');
     }
 
-    public function view(User $user, Certificate $certificate): bool
+    public function view($user, Certificate $certificate): bool
     {
         return $user->hasPermissionTo('certificates.view');
     }
 
-    public function create(User $user): bool
+    public function create($user): bool
     {
         return $user->hasPermissionTo('certificates.manage');
     }
 
-    public function update(User $user, Certificate $certificate): bool
+    public function update($user, Certificate $certificate): bool
     {
         return $user->hasPermissionTo('certificates.manage');
     }
 
-    public function delete(User $user, Certificate $certificate): bool
+    public function delete($user, Certificate $certificate): bool
     {
         return $user->hasPermissionTo('certificates.manage');
     }

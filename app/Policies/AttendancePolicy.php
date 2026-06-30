@@ -7,13 +7,16 @@ use App\Models\Attendance;
 
 class AttendancePolicy
 {
-    public function viewAny(User $user): bool
+    public function viewAny($user): bool
     {
-        return $user->hasPermissionTo('attendance.view');
+        return $user->hasRole('Student') || $user->hasPermissionTo('attendance.view');
     }
 
-    public function view(User $user, Attendance $attendance): bool
+    public function view($user, Attendance $attendance): bool
     {
+        if ($user->hasRole('Student')) {
+            return $user->admission?->id === $attendance->admission_id;
+        }
         if (!$user->hasPermissionTo('attendance.view')) {
             return false;
         }
@@ -23,12 +26,12 @@ class AttendancePolicy
         return true;
     }
 
-    public function create(User $user): bool
+    public function create($user): bool
     {
         return $user->hasPermissionTo('attendance.manage');
     }
 
-    public function update(User $user, Attendance $attendance): bool
+    public function update($user, Attendance $attendance): bool
     {
         if (!$user->hasPermissionTo('attendance.manage')) {
             return false;
@@ -39,7 +42,7 @@ class AttendancePolicy
         return true;
     }
 
-    public function delete(User $user, Attendance $attendance): bool
+    public function delete($user, Attendance $attendance): bool
     {
         if (!$user->hasPermissionTo('attendance.manage')) {
             return false;

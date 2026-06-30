@@ -3,11 +3,14 @@
 namespace Tests\Feature;
 
 use App\Models\User;
+use App\Models\Admin;
 use App\Models\Course;
 use App\Models\Enquiry;
 use App\Models\Admission;
+use App\Models\AdmissionCourse;
 use App\Models\FeeInstallment;
 use App\Models\FeeHold;
+use App\Models\FeePayment;
 use App\Models\Certificate;
 use App\Notifications\DueFeeReminderNotification;
 use Database\Seeders\DatabaseSeeder;
@@ -40,12 +43,12 @@ class StudentManagementSystemTest extends TestCase
         $this->assertTrue(Role::where('name', 'Accountant')->exists());
         $this->assertTrue(Role::where('name', 'Instructor')->exists());
 
-        $counselor = User::role('Counselor')->first();
+        $counselor = Admin::role('Counselor')->first();
         $this->assertNotNull($counselor);
         $this->assertTrue($counselor->hasPermissionTo('enquiries.create'));
         $this->assertFalse($counselor->hasPermissionTo('roles.manage'));
 
-        $accountant = User::role('Accountant')->first();
+        $accountant = Admin::role('Accountant')->first();
         $this->assertNotNull($accountant);
         $this->assertTrue($accountant->hasPermissionTo('fees.manage'));
         $this->assertFalse($accountant->hasPermissionTo('courses.create'));
@@ -69,7 +72,7 @@ class StudentManagementSystemTest extends TestCase
             'status' => 'active',
         ]);
 
-        $instructor = User::role('Instructor')->first();
+        $instructor = Admin::role('Instructor')->first();
 
         // 2. Create an enquiry
         $enquiry = Enquiry::create([
@@ -85,7 +88,7 @@ class StudentManagementSystemTest extends TestCase
             'address' => 'Test Address',
             'enquiry_source' => 'Google Search',
             'status' => 'New',
-            'taken_by' => User::role('Counselor')->first()->id,
+            'taken_by' => Admin::role('Counselor')->first()->id,
         ]);
         $enquiry->interestedCourses()->attach($course->id);
 
@@ -101,10 +104,15 @@ class StudentManagementSystemTest extends TestCase
             'mobile' => $enquiry->mobile,
             'email' => $enquiry->email,
             'address' => $enquiry->address,
+            'admission_date' => $admissionDate,
+            'status' => 'Active',
+        ]);
+
+        $enrollment = AdmissionCourse::create([
+            'admission_id' => $admission->id,
             'course_id' => $course->id,
             'time_slot' => '10:00 AM - 12:00 PM',
             'instructor_id' => $instructor->id,
-            'admission_date' => $admissionDate,
             'total_fee' => $course->total_fee,
             'discount_amount' => 0.00,
             'final_fee' => $course->total_fee,
@@ -130,8 +138,8 @@ class StudentManagementSystemTest extends TestCase
      */
     public function test_instructor_student_scoping()
     {
-        $instructorAlpha = User::where('email', 'instructor@sms.com')->first();
-        $instructorBeta = User::where('email', 'instructor2@sms.com')->first();
+        $instructorAlpha = Admin::where('email', 'instructor@sms.com')->first();
+        $instructorBeta = Admin::where('email', 'instructor2@sms.com')->first();
 
         $course = Course::first();
 
@@ -141,10 +149,15 @@ class StudentManagementSystemTest extends TestCase
             'roll_no' => 'ROLL-A-01',
             'student_name' => 'Alpha Student',
             'mobile' => '1234567890',
+            'admission_date' => now()->toDateString(),
+            'status' => 'Active',
+        ]);
+
+        AdmissionCourse::create([
+            'admission_id' => $admissionAlpha->id,
             'course_id' => $course->id,
             'time_slot' => '09:00 AM - 11:00 AM',
             'instructor_id' => $instructorAlpha->id,
-            'admission_date' => now()->toDateString(),
             'total_fee' => 1000.00,
             'discount_amount' => 0.00,
             'final_fee' => 1000.00,
@@ -157,10 +170,15 @@ class StudentManagementSystemTest extends TestCase
             'roll_no' => 'ROLL-B-01',
             'student_name' => 'Beta Student',
             'mobile' => '0987654321',
+            'admission_date' => now()->toDateString(),
+            'status' => 'Active',
+        ]);
+
+        AdmissionCourse::create([
+            'admission_id' => $admissionBeta->id,
             'course_id' => $course->id,
             'time_slot' => '11:00 AM - 01:00 PM',
             'instructor_id' => $instructorBeta->id,
-            'admission_date' => now()->toDateString(),
             'total_fee' => 1000.00,
             'discount_amount' => 0.00,
             'final_fee' => 1000.00,
@@ -169,13 +187,13 @@ class StudentManagementSystemTest extends TestCase
         ]);
 
         // Simulating the Eloquent query restriction that would run in AttendanceResource/Policies
-        $this->actingAs($instructorAlpha);
-        $alphaQuery = Admission::where('instructor_id', auth()->id())->get();
+        $this->actingAs($instructorAlpha, 'admin');
+        $alphaQuery = Admission::whereHas('enrollments', fn($q) => $q->where('instructor_id', auth()->id()))->get();
         $this->assertTrue($alphaQuery->contains($admissionAlpha));
         $this->assertFalse($alphaQuery->contains($admissionBeta));
 
-        $this->actingAs($instructorBeta);
-        $betaQuery = Admission::where('instructor_id', auth()->id())->get();
+        $this->actingAs($instructorBeta, 'admin');
+        $betaQuery = Admission::whereHas('enrollments', fn($q) => $q->where('instructor_id', auth()->id()))->get();
         $this->assertTrue($betaQuery->contains($admissionBeta));
         $this->assertFalse($betaQuery->contains($admissionAlpha));
     }
@@ -205,7 +223,7 @@ class StudentManagementSystemTest extends TestCase
             'hold_from' => now()->subDays(1)->toDateString(),
             'hold_to' => now()->addDays(2)->toDateString(),
             'reason' => 'Medical hold',
-            'approved_by' => User::role('Accountant')->first()->id,
+            'approved_by' => Admin::role('Accountant')->first()->id,
         ]);
 
         $this->assertTrue($admission->fresh()->hasActiveHold());
@@ -266,8 +284,9 @@ class StudentManagementSystemTest extends TestCase
      */
     public function test_reports_page_exports()
     {
-        $admin = User::role('Super Admin')->first();
-        $this->actingAs($admin);
+        $admin = Admin::role('Super Admin')->first();
+        $this->actingAs($admin, 'admin');
+        \Filament\Facades\Filament::setCurrentPanel(\Filament\Facades\Filament::getPanel('admin'));
 
         \Livewire\Livewire::test(\App\Filament\Admin\Pages\Reports::class)
             ->call('exportPdf')
@@ -283,8 +302,9 @@ class StudentManagementSystemTest extends TestCase
      */
     public function test_fee_installments_filter_tabs()
     {
-        $admin = User::role('Super Admin')->first();
-        $this->actingAs($admin);
+        $admin = Admin::role('Super Admin')->first();
+        $this->actingAs($admin, 'admin');
+        \Filament\Facades\Filament::setCurrentPanel(\Filament\Facades\Filament::getPanel('admin'));
 
         $listPage = new \App\Filament\Admin\Resources\FeeInstallmentResource\Pages\ListFeeInstallments();
         $tabs = $listPage->getTabs();
@@ -313,8 +333,9 @@ class StudentManagementSystemTest extends TestCase
         $this->assertEquals('EDU INSTITUTE', $setting->company_name);
 
         // 2. Access Settings Page as Admin
-        $admin = User::role('Super Admin')->first();
-        $this->actingAs($admin);
+        $admin = Admin::role('Super Admin')->first();
+        $this->actingAs($admin, 'admin');
+        \Filament\Facades\Filament::setCurrentPanel(\Filament\Facades\Filament::getPanel('admin'));
 
         \Livewire\Livewire::test(\App\Filament\Admin\Pages\CompanySettings::class)
             ->fillForm([
@@ -333,8 +354,9 @@ class StudentManagementSystemTest extends TestCase
      */
     public function test_multiple_courses_update_functionality()
     {
-        $admin = User::role('Super Admin')->first();
-        $this->actingAs($admin);
+        $admin = Admin::role('Super Admin')->first();
+        $this->actingAs($admin, 'admin');
+        \Filament\Facades\Filament::setCurrentPanel(\Filament\Facades\Filament::getPanel('admin'));
 
         $admission = Admission::first();
         $this->assertNotNull($admission);
@@ -342,7 +364,10 @@ class StudentManagementSystemTest extends TestCase
         $course2 = Course::where('id', '!=', $admission->course_id)->first();
         $this->assertNotNull($course2);
 
-        $instructor = User::role('Instructor')->first();
+        $enrollment1 = $admission->enrollments()->first();
+        $this->assertNotNull($enrollment1);
+
+        $instructor = Admin::role('Instructor')->first();
 
         // Access the Edit page, add another course enrollment, change name, and save
         \Livewire\Livewire::test(\App\Filament\Admin\Resources\AdmissionResource\Pages\EditAdmission::class, [
@@ -354,12 +379,12 @@ class StudentManagementSystemTest extends TestCase
                 'email' => $admission->email,
                 'enrollments' => [
                     [
-                        'id' => $admission->id,
-                        'course_id' => $admission->course_id,
+                        'id' => $enrollment1->id,
+                        'course_id' => $enrollment1->course_id,
                         'start_time' => '10:00 AM',
                         'end_time' => '12:00 PM',
                         'time_slot' => '10:00 AM - 12:00 PM',
-                        'instructor_id' => $admission->instructor_id,
+                        'instructor_id' => $enrollment1->instructor_id,
                         'total_fee' => 1000,
                         'registration_fee' => 0,
                         'discount_amount' => 0,
@@ -382,17 +407,19 @@ class StudentManagementSystemTest extends TestCase
             ])
             ->call('save');
 
-        // Verify that there are now 2 admissions with the edited name and mobile
+        // Verify that there is now 1 admission with the edited name and mobile
         $admissions = Admission::where('mobile', $admission->mobile)->get();
-        $this->assertCount(2, $admissions);
+        $this->assertCount(1, $admissions);
         $this->assertEquals('John Edited', $admissions[0]->student_name);
-        $this->assertEquals('John Edited', $admissions[1]->student_name);
         
-        // Verify that the second course was created
-        $newCourseAdmission = Admission::where('mobile', $admission->mobile)->where('course_id', $course2->id)->first();
-        $this->assertNotNull($newCourseAdmission);
-        $this->assertEquals('02:00 PM - 04:00 PM', $newCourseAdmission->time_slot);
-        $this->assertEquals(1200, $newCourseAdmission->final_fee);
+        // Verify that the second course enrollment was created
+        $student = $admissions[0];
+        $this->assertCount(2, $student->enrollments);
+        
+        $newEnrollment = $student->enrollments()->where('course_id', $course2->id)->first();
+        $this->assertNotNull($newEnrollment);
+        $this->assertEquals('02:00 PM - 04:00 PM', $newEnrollment->time_slot);
+        $this->assertEquals(1200, $newEnrollment->final_fee);
     }
 
     /**
@@ -400,18 +427,19 @@ class StudentManagementSystemTest extends TestCase
      */
     public function test_admin_user_management_and_deletion_restrictions()
     {
-        $superAdmin = User::role('Super Admin')->first();
-        $admin = User::role('Admin')->first();
+        $superAdmin = Admin::role('Super Admin')->first();
+        $admin = Admin::role('Admin')->first();
 
         // 1. Admin can viewAny users
-        $this->actingAs($admin);
-        $this->assertTrue($admin->can('viewAny', User::class));
+        $this->actingAs($admin, 'admin');
+        \Filament\Facades\Filament::setCurrentPanel(\Filament\Facades\Filament::getPanel('admin'));
+        $this->assertTrue($admin->can('viewAny', Admin::class));
 
         // 2. Admin can create users
-        $this->assertTrue($admin->can('create', User::class));
+        $this->assertTrue($admin->can('create', Admin::class));
 
         // 3. Admin can update users
-        $newUser = User::factory()->create();
+        $newUser = Admin::factory()->create();
         $this->assertTrue($admin->can('update', $newUser));
 
         // 4. Admin cannot delete a Super Admin
@@ -421,12 +449,12 @@ class StudentManagementSystemTest extends TestCase
         $this->assertTrue($superAdmin->can('delete', $superAdmin));
 
         // Let's create a second Super Admin user to test policy check on another Super Admin
-        $secondSuperAdmin = User::factory()->create();
+        $secondSuperAdmin = Admin::factory()->create();
         $secondSuperAdmin->assignRole('Super Admin');
         $this->assertTrue($superAdmin->can('delete', $secondSuperAdmin));
 
         // 6. Admin can delete a normal user
-        $normalUser = User::factory()->create();
+        $normalUser = Admin::factory()->create();
         $this->assertTrue($admin->can('delete', $normalUser));
     }
 
@@ -435,30 +463,36 @@ class StudentManagementSystemTest extends TestCase
      */
     public function test_restricted_modules_access()
     {
-        $superAdmin = User::role('Super Admin')->first();
-        $admin = User::role('Admin')->first();
+        $superAdmin = Admin::role('Super Admin')->first();
+        $admin = Admin::role('Admin')->first();
 
         // 1. Roles & Permissions policies
-        $this->actingAs($admin);
+        $this->actingAs($admin, 'admin');
+        \Filament\Facades\Filament::setCurrentPanel(\Filament\Facades\Filament::getPanel('admin'));
         $this->assertFalse($admin->can('viewAny', Role::class));
         $this->assertFalse($admin->can('viewAny', Permission::class));
 
-        $this->actingAs($superAdmin);
+        $this->actingAs($superAdmin, 'admin');
+        \Filament\Facades\Filament::setCurrentPanel(\Filament\Facades\Filament::getPanel('admin'));
         $this->assertTrue($superAdmin->can('viewAny', Role::class));
         $this->assertTrue($superAdmin->can('viewAny', Permission::class));
 
         // 2. Audit Trails page (ActivityLogResource)
-        $this->actingAs($admin);
+        $this->actingAs($admin, 'admin');
+        \Filament\Facades\Filament::setCurrentPanel(\Filament\Facades\Filament::getPanel('admin'));
         $this->assertFalse(\App\Filament\Admin\Resources\ActivityLogResource::canViewAny());
 
-        $this->actingAs($superAdmin);
+        $this->actingAs($superAdmin, 'admin');
+        \Filament\Facades\Filament::setCurrentPanel(\Filament\Facades\Filament::getPanel('admin'));
         $this->assertTrue(\App\Filament\Admin\Resources\ActivityLogResource::canViewAny());
 
         // 3. Company Settings page
-        $this->actingAs($admin);
+        $this->actingAs($admin, 'admin');
+        \Filament\Facades\Filament::setCurrentPanel(\Filament\Facades\Filament::getPanel('admin'));
         $this->assertFalse(\App\Filament\Admin\Pages\CompanySettings::canAccess());
 
-        $this->actingAs($superAdmin);
+        $this->actingAs($superAdmin, 'admin');
+        \Filament\Facades\Filament::setCurrentPanel(\Filament\Facades\Filament::getPanel('admin'));
         $this->assertTrue(\App\Filament\Admin\Pages\CompanySettings::canAccess());
     }
 
@@ -467,12 +501,13 @@ class StudentManagementSystemTest extends TestCase
      */
     public function test_user_deletion_restrictions_via_filament()
     {
-        $superAdmin = User::role('Super Admin')->first();
-        $admin = User::role('Admin')->first();
-        $normalUser = User::factory()->create();
+        $superAdmin = Admin::role('Super Admin')->first();
+        $admin = Admin::role('Admin')->first();
+        $normalUser = Admin::factory()->create();
 
         // 1. Acting as Admin
-        $this->actingAs($admin);
+        $this->actingAs($admin, 'admin');
+        \Filament\Facades\Filament::setCurrentPanel(\Filament\Facades\Filament::getPanel('admin'));
 
         // Admin should not see 'delete' action for a Super Admin row, but should see it for normal users
         \Livewire\Livewire::test(\App\Filament\Admin\Resources\UserResource\Pages\ManageUsers::class)
@@ -480,29 +515,31 @@ class StudentManagementSystemTest extends TestCase
             ->assertTableActionVisible('delete', $normalUser);
 
         // 2. Acting as Super Admin
-        $this->actingAs($superAdmin);
+        $this->actingAs($superAdmin, 'admin');
+        \Filament\Facades\Filament::setCurrentPanel(\Filament\Facades\Filament::getPanel('admin'));
 
         // Super Admin should see the action (due to Gate::before bypass), but calling it should halt and NOT delete
         \Livewire\Livewire::test(\App\Filament\Admin\Resources\UserResource\Pages\ManageUsers::class)
             ->callTableAction('delete', $superAdmin);
 
-        $this->assertDatabaseHas('users', ['id' => $superAdmin->id]);
+        $this->assertDatabaseHas('admins', ['id' => $superAdmin->id]);
 
         // Same for another Super Admin
-        $secondSuperAdmin = User::factory()->create();
+        $secondSuperAdmin = Admin::factory()->create();
         $secondSuperAdmin->assignRole('Super Admin');
 
         \Livewire\Livewire::test(\App\Filament\Admin\Resources\UserResource\Pages\ManageUsers::class)
             ->callTableAction('delete', $secondSuperAdmin);
 
-        $this->assertDatabaseHas('users', ['id' => $secondSuperAdmin->id]);
+        $this->assertDatabaseHas('admins', ['id' => $secondSuperAdmin->id]);
 
         // Verify that a normal user CAN be deleted by Admin
-        $this->actingAs($admin);
+        $this->actingAs($admin, 'admin');
+        \Filament\Facades\Filament::setCurrentPanel(\Filament\Facades\Filament::getPanel('admin'));
         \Livewire\Livewire::test(\App\Filament\Admin\Resources\UserResource\Pages\ManageUsers::class)
             ->callTableAction('delete', $normalUser);
 
-        $this->assertDatabaseMissing('users', ['id' => $normalUser->id]);
+        $this->assertDatabaseMissing('admins', ['id' => $normalUser->id]);
     }
 
     /**
@@ -518,9 +555,380 @@ class StudentManagementSystemTest extends TestCase
         $response->assertStatus(302);
 
         // Authenticated user should be able to view it
-        $user = User::first();
-        $response = $this->actingAs($user)->get('/admin/student-photos/student_photos/avatar.jpg');
+        $user = Admin::first();
+        $response = $this->actingAs($user, 'admin')->get('/admin/student-photos/student_photos/avatar.jpg');
         $response->assertStatus(200);
         $this->assertEquals('imagecontent', $response->streamedContent());
+    }
+
+    /**
+     * Test panel access control for Student and Admin roles.
+     */
+    public function test_student_and_admin_panel_access_controls()
+    {
+        $admin = Admin::role('Super Admin')->first();
+        
+        // Find or create student user
+        $admission = Admission::first();
+        $studentUser = $admission->user;
+        $this->assertNotNull($studentUser);
+        $this->assertTrue($studentUser->hasRole('Student'));
+
+        // 1. Admin should be allowed in admin panel but not student panel
+        $responseAdminToAdmin = $this->actingAs($admin, 'admin')->get('/admin');
+        if ($responseAdminToAdmin->isRedirect()) {
+            $responseAdminToAdmin = $this->followRedirects($responseAdminToAdmin);
+        }
+        $responseAdminToAdmin->assertStatus(200);
+
+        $responseAdminToStudent = $this->actingAs($admin, 'admin')->get('/student/dashboard');
+        $this->assertTrue(in_array($responseAdminToStudent->getStatusCode(), [302, 403]));
+
+        // 2. Student should be allowed in student panel but not admin panel
+        $responseStudentToStudent = $this->actingAs($studentUser)->get('/student/dashboard');
+        if ($responseStudentToStudent->isRedirect()) {
+            $responseStudentToStudent = $this->followRedirects($responseStudentToStudent);
+        }
+        $responseStudentToStudent->assertStatus(200);
+
+        $responseStudentToAdmin = $this->actingAs($studentUser)->get('/admin');
+        $this->assertTrue(in_array($responseStudentToAdmin->getStatusCode(), [302, 403]));
+    }
+
+    /**
+     * Test student profile update (email and image/photo sync).
+     */
+    public function test_student_profile_update()
+    {
+        $admission = Admission::first();
+        $studentUser = $admission->user;
+
+        $this->actingAs($studentUser);
+        \Filament\Facades\Filament::setCurrentPanel(\Filament\Facades\Filament::getPanel('student'));
+
+        \Illuminate\Support\Facades\Storage::fake('local');
+        $photo = \Illuminate\Http\UploadedFile::fake()->image('new_photo.jpg');
+
+        \Livewire\Livewire::test(\App\Filament\Student\Pages\ProfileSettings::class)
+            ->fillForm([
+                'email' => 'updated.student@example.com',
+                'student_photo' => $photo,
+            ])
+            ->call('save');
+
+        // Check if both user and admission emails are updated and student_photo is updated
+        $this->assertEquals('updated.student@example.com', $studentUser->fresh()->email);
+        $this->assertEquals('updated.student@example.com', $admission->fresh()->email);
+        $this->assertNotNull($admission->fresh()->student_photo);
+    }
+
+    /**
+     * Test leave application creation by student and approval by admin.
+     */
+    public function test_leave_application_student_flow_and_admin_approval()
+    {
+        $admission = Admission::first();
+        $studentUser = $admission->user;
+        $admin = Admin::role('Super Admin')->first();
+
+        // 1. Student creates leave application
+        $this->actingAs($studentUser);
+        \Filament\Facades\Filament::setCurrentPanel(\Filament\Facades\Filament::getPanel('student'));
+
+        \Livewire\Livewire::test(\App\Filament\Student\Resources\LeaveApplicationResource\Pages\CreateLeaveApplication::class)
+            ->fillForm([
+                'start_date' => now()->addDays(2)->toDateString(),
+                'end_date' => now()->addDays(5)->toDateString(),
+                'reason' => 'Need leave for personal work.',
+            ])
+            ->call('create');
+
+        $this->assertDatabaseHas('leave_applications', [
+            'admission_id' => $admission->id,
+            'reason' => 'Need leave for personal work.',
+            'status' => 'Pending',
+        ]);
+
+        $leave = \App\Models\LeaveApplication::where('admission_id', $admission->id)->first();
+        $this->assertNotNull($leave);
+
+        // 2. Admin approves the leave application
+        $this->actingAs($admin, 'admin');
+        \Filament\Facades\Filament::setCurrentPanel(\Filament\Facades\Filament::getPanel('admin'));
+        \Filament\Facades\Filament::setCurrentPanel(\Filament\Facades\Filament::getPanel('admin'));
+
+        \Livewire\Livewire::test(\App\Filament\Admin\Resources\LeaveApplicationResource\Pages\ManageLeaveApplications::class)
+            ->callTableAction('approve', $leave, [
+                'admin_remarks' => 'Approved, have a good time.',
+            ]);
+
+        $this->assertEquals('Approved', $leave->fresh()->status);
+        $this->assertEquals('Approved, have a good time.', $leave->fresh()->admin_remarks);
+    }
+
+    /**
+     * Test student self course enrollment.
+     */
+    public function test_student_self_course_enrollment()
+    {
+        $admission = Admission::first();
+        $studentUser = $admission->user;
+        
+        // Find a course student is NOT enrolled in yet
+        $enrolledCourseIds = $admission->enrollments()->pluck('course_id')->toArray();
+        $course = Course::whereNotIn('id', $enrolledCourseIds)->first();
+        $this->assertNotNull($course);
+
+        $this->actingAs($studentUser);
+        \Filament\Facades\Filament::setCurrentPanel(\Filament\Facades\Filament::getPanel('student'));
+
+        \Livewire\Livewire::test(\App\Filament\Student\Resources\EnrollmentResource\Pages\CreateEnrollment::class)
+            ->fillForm([
+                'course_id' => $course->id,
+                'start_time' => '04:00 PM',
+                'end_time' => '06:00 PM',
+                'time_slot' => '04:00 PM - 06:00 PM',
+            ])
+            ->call('create');
+
+        // Check enrollment exists and fees matched
+        $this->assertDatabaseHas('admission_courses', [
+            'admission_id' => $admission->id,
+            'course_id' => $course->id,
+            'total_fee' => $course->total_fee,
+            'final_fee' => $course->total_fee,
+            'registration_fee' => $course->registration_fee,
+            'status' => 'Active',
+        ]);
+    }
+
+    /**
+     * Test student payment QR upload, admin verification, and receipt downloading.
+     */
+    public function test_student_qr_payment_and_admin_verification_flow()
+    {
+        $admission = Admission::first();
+        $studentUser = $admission->user;
+        $admin = Admin::role('Super Admin')->first();
+        
+        $installment = FeeInstallment::create([
+            'admission_id' => $admission->id,
+            'admission_course_id' => $admission->enrollments()->first()->id,
+            'installment_no' => 2,
+            'due_date' => now()->addMonth(),
+            'amount' => 500.00,
+            'paid_amount' => 0.00,
+            'due_amount' => 500.00,
+            'status' => 'Pending',
+        ]);
+
+        // 1. Student uploads screenshot proof via QR pay action
+        $this->actingAs($studentUser);
+        \Filament\Facades\Filament::setCurrentPanel(\Filament\Facades\Filament::getPanel('student'));
+
+        \Illuminate\Support\Facades\Storage::fake('local');
+        $screenshot = \Illuminate\Http\UploadedFile::fake()->image('proof.jpg');
+
+        \Livewire\Livewire::test(\App\Filament\Student\Resources\FeeInstallmentResource\Pages\ListFeeInstallments::class)
+            ->callTableAction('pay_qr', $installment, [
+                'amount_paid' => 500.00,
+                'payment_method' => 'UPI/QR Code',
+                'transaction_reference' => 'TXN123456789',
+                'receipt_date' => now()->toDateString(),
+                'screenshot' => $screenshot,
+            ]);
+
+        // Verify payment record is created as Pending
+        $this->assertDatabaseHas('fee_payments', [
+            'admission_id' => $admission->id,
+            'fee_installment_id' => $installment->id,
+            'amount_paid' => 500.00,
+            'status' => 'Pending',
+            'transaction_reference' => 'TXN123456789',
+        ]);
+
+        $payment = FeePayment::where('transaction_reference', 'TXN123456789')->first();
+        $this->assertNotNull($payment->screenshot);
+
+        // Verify installment due_amount has NOT changed (still 500.00 because payment is pending)
+        $this->assertEquals(500.00, $installment->fresh()->due_amount);
+
+        // 2. Admin verifies the payment
+        $this->actingAs($admin, 'admin');
+        \Filament\Facades\Filament::setCurrentPanel(\Filament\Facades\Filament::getPanel('admin'));
+        \Filament\Facades\Filament::setCurrentPanel(\Filament\Facades\Filament::getPanel('admin'));
+
+        \Livewire\Livewire::test(\App\Filament\Admin\Resources\FeePaymentResource\Pages\ListFeePayments::class)
+            ->callTableAction('verify_payment', $payment);
+
+        // Verify status changed to Verified
+        $this->assertEquals('Verified', $payment->fresh()->status);
+
+        // Verify installment is now Paid
+        $this->assertEquals(0.00, $installment->fresh()->due_amount);
+        $this->assertEquals('Paid', $installment->fresh()->status);
+        
+        // 3. Verify student can access the list of receipts
+        $this->actingAs($studentUser);
+        \Filament\Facades\Filament::setCurrentPanel(\Filament\Facades\Filament::getPanel('student'));
+
+        $receiptsList = \Livewire\Livewire::test(\App\Filament\Student\Resources\ReceiptResource\Pages\ListReceipts::class);
+        $receiptsList->assertStatus(200);
+    }
+
+    /**
+     * Test student attendance logs list page and stats widget.
+     */
+    public function test_student_attendance_logs_and_stats()
+    {
+        $admission = Admission::first();
+        $studentUser = $admission->user;
+
+        $this->actingAs($studentUser);
+        \Filament\Facades\Filament::setCurrentPanel(\Filament\Facades\Filament::getPanel('student'));
+
+        \Livewire\Livewire::test(\App\Filament\Student\Resources\AttendanceResource\Pages\ListAttendances::class)
+            ->assertStatus(200);
+    }
+
+    /**
+     * Test student enrollment view details page.
+     */
+    public function test_student_enrollment_view_details()
+    {
+        $admission = Admission::first();
+        $studentUser = $admission->user;
+        $enrollment = $admission->enrollments()->first();
+
+        $this->actingAs($studentUser);
+        \Filament\Facades\Filament::setCurrentPanel(\Filament\Facades\Filament::getPanel('student'));
+
+        \Livewire\Livewire::test(\App\Filament\Student\Resources\EnrollmentResource\Pages\ViewEnrollment::class, [
+            'record' => $enrollment->id,
+        ])
+        ->assertStatus(200);
+    }
+
+    /**
+     * Test student cannot apply for leave if another leave application is Pending or Approved.
+     */
+    public function test_student_leave_application_limit_rule()
+    {
+        $admission = Admission::first();
+        $studentUser = $admission->user;
+
+        $this->actingAs($studentUser);
+        \Filament\Facades\Filament::setCurrentPanel(\Filament\Facades\Filament::getPanel('student'));
+
+        // 1. Create first leave application (Pending)
+        \Livewire\Livewire::test(\App\Filament\Student\Resources\LeaveApplicationResource\Pages\CreateLeaveApplication::class)
+            ->fillForm([
+                'start_date' => now()->addDays(2)->toDateString(),
+                'end_date' => now()->addDays(5)->toDateString(),
+                'reason' => 'First leave application.',
+            ])
+            ->call('create')
+            ->assertHasNoFormErrors();
+
+        $this->assertDatabaseHas('leave_applications', [
+            'admission_id' => $admission->id,
+            'reason' => 'First leave application.',
+            'status' => 'Pending',
+        ]);
+
+        // 2. Try to create second leave application, should fail validation
+        \Livewire\Livewire::test(\App\Filament\Student\Resources\LeaveApplicationResource\Pages\CreateLeaveApplication::class)
+            ->fillForm([
+                'start_date' => now()->addDays(6)->toDateString(),
+                'end_date' => now()->addDays(8)->toDateString(),
+                'reason' => 'Second leave application.',
+            ])
+            ->call('create')
+            ->assertHasFormErrors(['start_date']);
+    }
+
+    /**
+     * Test mark attendance custom page loading, list population, and saving.
+     */
+    public function test_mark_attendance_custom_page_loading_and_saving()
+    {
+        $admin = Admin::role('Super Admin')->first();
+        $this->actingAs($admin, 'admin');
+        \Filament\Facades\Filament::setCurrentPanel(\Filament\Facades\Filament::getPanel('admin'));
+
+        // Access/Test Mark Attendance Livewire component
+        $component = \Livewire\Livewire::test(\App\Filament\Admin\Pages\MarkAttendance::class);
+        $component->assertStatus(200);
+
+        // Verify that the list of students is loaded automatically
+        $students = $component->get('students');
+        $this->assertNotEmpty($students);
+
+        // Verify search functionality
+        $firstStudentName = $students->first()->student_name;
+        $component->set('search', $firstStudentName);
+        $this->assertNotEmpty($component->get('students'));
+
+        $component->set('search', 'NonExistentStudentQueryXYZ');
+        $this->assertEmpty($component->get('students'));
+
+        // Reset search
+        $component->set('search', '');
+
+        // Mark a student status and save
+        $studentId = $students->first()->id;
+        $component->call('setStatus', $studentId, 'Absent');
+        $component->call('save');
+
+        // Assert that database has the attendance marked as Absent
+        $this->assertDatabaseHas('attendances', [
+            'admission_course_id' => $studentId,
+            'status' => 'Absent',
+        ]);
+    }
+
+    /**
+     * Test Admission user account creation, linkage, and sync logic.
+     */
+    public function test_admission_user_linkage_and_update_behavior()
+    {
+        // 1. Create a user beforehand
+        $existingEmail = 'existingstudent@example.com';
+        $existingUser = User::create([
+            'name' => 'Existing User',
+            'email' => $existingEmail,
+            'password' => \Illuminate\Support\Facades\Hash::make('secret123'),
+        ]);
+
+        // 2. Create admission with existing email -> should link to existing user
+        $admission = Admission::create([
+            'student_name' => 'Linked Student',
+            'email' => $existingEmail,
+            'mobile' => '9876543210',
+            'admission_date' => now(),
+            'status' => 'Active',
+        ]);
+
+        $this->assertEquals($existingUser->id, $admission->user_id);
+
+        // 3. Create admission without email -> should not create a user
+        $admissionNoEmail = Admission::create([
+            'student_name' => 'No Email Student',
+            'email' => null,
+            'mobile' => '1234567890',
+            'admission_date' => now(),
+            'status' => 'Active',
+        ]);
+
+        $this->assertNull($admissionNoEmail->user_id);
+
+        // 4. Edit admission -> should synchronize email and name to the linked user
+        $admission->update([
+            'student_name' => 'Linked Student Edited',
+            'email' => 'updatedstudentemail@example.com',
+        ]);
+
+        $this->assertEquals('Linked Student Edited', $existingUser->fresh()->name);
+        $this->assertEquals('updatedstudentemail@example.com', $existingUser->fresh()->email);
     }
 }

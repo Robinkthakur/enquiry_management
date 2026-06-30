@@ -5,14 +5,14 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
-use Spatie\Activitylog\Models\Concerns\LogsActivity;
-use Spatie\Activitylog\Support\LogOptions;
+// use Spatie\Activitylog\Models\Concerns\LogsActivity;
+// use Spatie\Activitylog\Support\LogOptions;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 class Course extends Model
 {
-    use HasUuids, SoftDeletes, LogsActivity;
+    use HasUuids, SoftDeletes;
 
     protected $fillable = [
         'course_code',
@@ -34,13 +34,13 @@ class Course extends Model
         'tax_percentage' => 'decimal:2',
     ];
 
-    public function getActivitylogOptions(): LogOptions
-    {
-        return LogOptions::defaults()
-            ->logAll()
-            ->logOnlyDirty()
-            ->dontLogEmptyChanges();
-    }
+    // public function getActivitylogOptions(): LogOptions
+    // {
+    //     return LogOptions::defaults()
+    //         ->logAll()
+    //         ->logOnlyDirty()
+    //         ->dontLogEmptyChanges();
+    // }
 
     public function enquiries(): BelongsToMany
     {
@@ -52,9 +52,14 @@ class Course extends Model
         return $this->hasMany(Batch::class);
     }
 
-    public function admissions(): HasMany
+    public function enrollments(): HasMany
     {
-        return $this->hasMany(Admission::class);
+        return $this->hasMany(AdmissionCourse::class, 'course_id');
+    }
+
+    public function admissions(): BelongsToMany
+    {
+        return $this->belongsToMany(Admission::class, 'admission_courses', 'course_id', 'admission_id');
     }
 
     public function certificates(): HasMany

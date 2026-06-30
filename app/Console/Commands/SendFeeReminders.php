@@ -35,7 +35,7 @@ class SendFeeReminders extends Command
 
         // 1. Fetch unpaid installments
         $installments = FeeInstallment::whereIn('status', ['Pending', 'Partial', 'Overdue'])
-            ->with(['admission.course', 'admission.holds'])
+            ->with(['admission.holds', 'enrollment.course'])
             ->get();
 
         $dispatchedCount = 0;

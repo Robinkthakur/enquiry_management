@@ -7,27 +7,30 @@ use App\Models\FeePayment;
 
 class FeePaymentPolicy
 {
-    public function viewAny(User $user): bool
+    public function viewAny($user): bool
     {
+        return $user->hasRole('Student') || $user->hasPermissionTo('fees.view');
+    }
+
+    public function view($user, FeePayment $payment): bool
+    {
+        if ($user->hasRole('Student')) {
+            return $user->admission?->id === $payment->admission_id;
+        }
         return $user->hasPermissionTo('fees.view');
     }
 
-    public function view(User $user, FeePayment $payment): bool
+    public function create($user): bool
     {
-        return $user->hasPermissionTo('fees.view');
+        return $user->hasRole('Student') || $user->hasPermissionTo('fees.manage');
     }
 
-    public function create(User $user): bool
+    public function update($user, FeePayment $payment): bool
     {
         return $user->hasPermissionTo('fees.manage');
     }
 
-    public function update(User $user, FeePayment $payment): bool
-    {
-        return $user->hasPermissionTo('fees.manage');
-    }
-
-    public function delete(User $user, FeePayment $payment): bool
+    public function delete($user, FeePayment $payment): bool
     {
         return $user->hasPermissionTo('fees.manage');
     }

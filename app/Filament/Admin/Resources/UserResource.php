@@ -3,7 +3,7 @@
 namespace App\Filament\Admin\Resources;
 
 use App\Filament\Admin\Resources\UserResource\Pages;
-use App\Models\User;
+use App\Models\Admin;
 use Filament\Forms;
 use Filament\Schemas\Schema;
 use Filament\Schemas\Components\Section;
@@ -16,7 +16,7 @@ use Filament\Actions;
 
 class UserResource extends Resource
 {
-    protected static ?string $model = User::class;
+    protected static ?string $model = Admin::class;
 
     protected static string | \BackedEnum | null $navigationIcon = 'heroicon-o-users';
     protected static string | \UnitEnum | null $navigationGroup = 'User Management';
@@ -76,7 +76,7 @@ class UserResource extends Resource
                 Actions\ActionGroup::make([
                     Actions\EditAction::make(),
                     Actions\DeleteAction::make()
-                        ->before(function ($action, User $record) {
+                        ->before(function ($action, Admin $record) {
                             if ($record->hasRole('Super Admin')) {
                                 \Filament\Notifications\Notification::make()
                                     ->danger()
@@ -105,7 +105,8 @@ class UserResource extends Resource
                             }
                         }),
                 ]),
-            ]);
+            ])
+            ->defaultSort('created_at', 'desc');
     }
 
     public static function getPages(): array

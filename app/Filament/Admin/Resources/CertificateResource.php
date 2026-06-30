@@ -35,18 +35,22 @@ class CertificateResource extends Resource
                             ->searchable()
                             ->default(request()->query('admission_id'))
                             ->afterStateUpdated(function ($state, callable $set) {
-                                if ($state) {
-                                    $student = Admission::find($state);
-                                    if ($student) {
-                                        $set('course_id', $student->course_id);
-                                    }
-                                }
+                                $set('course_id', null);
                             }),
                         Forms\Components\Select::make('course_id')
-                            ->relationship('course', 'course_name')
+                            ->label('Course')
+                            ->options(function (callable $get) {
+                                $admissionId = $get('admission_id');
+                                if (!$admissionId) {
+                                    return [];
+                                }
+                                $admission = Admission::find($admissionId);
+                                if (!$admission) {
+                                    return [];
+                                }
+                                return $admission->courses->pluck('course_name', 'id')->toArray();
+                            })
                             ->required()
-                            ->disabled()
-                            ->dehydrated()
                             ->default(request()->query('course_id')),
                         Forms\Components\DatePicker::make('issue_date')
                             ->required()
@@ -106,7 +110,8 @@ class CertificateResource extends Resource
             ])
             ->bulkActions([
                 //
-            ]);
+            ])
+            ->defaultSort('created_at', 'desc');
     }
 
     public static function getPages(): array

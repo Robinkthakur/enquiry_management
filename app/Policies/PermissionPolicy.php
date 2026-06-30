@@ -7,27 +7,27 @@ use Spatie\Permission\Models\Permission;
 
 class PermissionPolicy
 {
-    public function viewAny(User $user): bool
+    public function viewAny($user): bool
     {
         return $user->hasRole('Super Admin');
     }
 
-    public function view(User $user, Permission $permission): bool
+    public function view($user, Permission $permission): bool
     {
         return $user->hasRole('Super Admin');
     }
 
-    public function create(User $user): bool
+    public function create($user): bool
     {
         return $user->hasRole('Super Admin');
     }
 
-    public function update(User $user, Permission $permission): bool
+    public function update($user, Permission $permission): bool
     {
         return $user->hasRole('Super Admin');
     }
 
-    public function delete(User $user, Permission $permission): bool
+    public function delete($user, Permission $permission): bool
     {
         return $user->hasRole('Super Admin');
     }

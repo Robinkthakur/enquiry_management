@@ -19,6 +19,8 @@ class FeePayment extends Model
         'payment_method',
         'transaction_reference',
         'receipt_date',
+        'status',
+        'screenshot',
     ];
 
     protected $casts = [
@@ -30,7 +32,7 @@ class FeePayment extends Model
     {
         $inst = FeeInstallment::find($installmentId);
         if ($inst) {
-            $totalPaid = self::where('fee_installment_id', $installmentId)->sum('amount_paid');
+            $totalPaid = self::where('fee_installment_id', $installmentId)->where('status', 'Verified')->sum('amount_paid');
             $inst->paid_amount = $totalPaid;
             $inst->due_amount = max(0.00, $inst->amount - $totalPaid);
             if ($inst->due_amount <= 0) {
@@ -60,13 +62,23 @@ class FeePayment extends Model
         });
 
         static::saving(function ($payment) {
-            if ($payment->isDirty('admission_id') || empty($payment->fee_installment_id)) {
+            if (empty($payment->fee_installment_id)) {
                 if ($payment->admission_id) {
                     $installment = FeeInstallment::where('admission_id', $payment->admission_id)
+                        ->where('due_amount', '>', 0)
+                        ->orderBy('due_date', 'asc')
                         ->orderBy('installment_no', 'asc')
                         ->first();
                     if ($installment) {
                         $payment->fee_installment_id = $installment->id;
+                    } else {
+                        // fallback to first installment if none are pending
+                        $firstInst = FeeInstallment::where('admission_id', $payment->admission_id)
+                            ->orderBy('installment_no', 'asc')
+                            ->first();
+                        if ($firstInst) {
+                            $payment->fee_installment_id = $firstInst->id;
+                        }
                     }
                 }
             }

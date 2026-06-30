@@ -57,14 +57,10 @@ class CourseResource extends Resource
 
                 Section::make()
                     ->schema([
-                        Forms\Components\TextInput::make('total_fee')
-                            ->required()
-                            ->numeric()
-                            ->prefix('₹'),
-                        Forms\Components\TextInput::make('registration_fee')
-                            ->required()
-                            ->numeric()
-                            ->prefix('₹'),
+                        Forms\Components\Hidden::make('total_fee')
+                            ->default(0.00),
+                        Forms\Components\Hidden::make('registration_fee')
+                            ->default(0.00),
                         Forms\Components\TextInput::make('certificate_fee')
                             ->required()
                             ->numeric()
@@ -91,13 +87,7 @@ class CourseResource extends Resource
                 Tables\Columns\TextColumn::make('duration_months')
                     ->suffix(' months')
                     ->sortable(),
-                Tables\Columns\TextColumn::make('total_fee')
-                    ->money('INR')
-                    ->sortable(),
-                Tables\Columns\TextColumn::make('registration_fee')
-                    ->money('INR')
-                    ->sortable()
-                    ->toggleable(isToggledHiddenByDefault: true),
+
                 Tables\Columns\TextColumn::make('certificate_fee')
                     ->money('INR')
                     ->sortable()
@@ -138,7 +128,8 @@ class CourseResource extends Resource
                 Actions\BulkActionGroup::make([
                     Actions\DeleteBulkAction::make(),
                 ]),
-            ]);
+            ])
+            ->defaultSort('created_at', 'desc');
     }
 
     public static function getRelations(): array

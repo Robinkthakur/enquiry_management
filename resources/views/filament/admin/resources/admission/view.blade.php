@@ -22,7 +22,7 @@
                 <div class="p-6 bg-white border border-gray-100 rounded-xl shadow-sm dark:bg-gray-900 dark:border-gray-800 flex flex-col items-center text-center">
                     <!-- Photo -->
                     @if($record->student_photo)
-                        <img src="{{ \Illuminate\Support\Facades\Storage::disk('local')->url($record->student_photo) }}" alt="Student photo" class="w-32 h-32 rounded-xl object-cover shadow-md border-4 border-primary-500/20">
+                        <img src="{{ route('admin.student-photo', ['path' => $record->student_photo]) }}" alt="Student photo" class="w-32 h-32 rounded-xl object-cover shadow-md border-4 border-primary-500/20">
                     @else
                         <div class="w-32 h-32 rounded-xl bg-gradient-to-tr from-primary-500 to-amber-300 flex items-center justify-center text-white text-4xl font-bold shadow-md border-4 border-primary-500/10">
                             {{ strtoupper(substr($record->student_name, 0, 2)) }}
@@ -30,7 +30,7 @@
                     @endif
 
                     <h2 class="mt-4 text-xl font-bold text-gray-900 dark:text-white">{{ $record->student_name }}</h2>
-                    <p class="text-sm font-medium text-gray-500 dark:text-gray-400">{{ $record->roll_no }}</p>
+                    <p class="text-sm font-medium text-gray-500 dark:text-gray-400">{{ $record->admission_no }}</p>
                     
                     <span class="mt-2 px-2.5 py-0.5 text-xs font-semibold rounded-full bg-{{ $statusColor }}-100 text-{{ $statusColor }}-800 dark:bg-{{ $statusColor }}-500/10 dark:text-{{ $statusColor }}-400">
                         {{ $record->status }}
@@ -38,16 +38,27 @@
 
                     <div class="w-full mt-6 border-t border-gray-100 dark:border-gray-800 pt-4 text-left space-y-3">
                         <div>
-                            <span class="text-xs text-gray-400 font-medium block">Course</span>
-                            <span class="text-sm text-gray-800 dark:text-gray-200 font-semibold">{{ $record->course->course_name }}</span>
-                        </div>
-                        <div>
-                            <span class="text-xs text-gray-400 font-medium block">Time Slot</span>
-                            <span class="text-sm text-gray-800 dark:text-gray-200 font-semibold">{{ $record->time_slot ?: 'Not Assigned' }}</span>
-                        </div>
-                        <div>
-                            <span class="text-xs text-gray-400 font-medium block">Instructor</span>
-                            <span class="text-sm text-gray-800 dark:text-gray-200 font-semibold">{{ $record->instructor ? $record->instructor->name : 'Not Assigned' }}</span>
+                            <span class="text-xs text-gray-400 font-medium block mb-1">Enrolled Courses</span>
+                            <div class="space-y-2 mt-1">
+                                @forelse($record->enrollments as $enrollment)
+                                    <div class="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-100 dark:border-gray-700 text-xs text-left">
+                                        <div class="font-semibold text-gray-800 dark:text-gray-200">
+                                            {{ $enrollment->course->course_name }} ({{ $enrollment->course->course_code }})
+                                        </div>
+                                        <div class="text-gray-500 mt-1">
+                                            Slot: <span class="font-medium text-gray-700 dark:text-gray-300">{{ $enrollment->time_slot ?: 'Not Assigned' }}</span>
+                                        </div>
+                                        <div class="text-gray-500">
+                                            Instructor: <span class="font-medium text-gray-700 dark:text-gray-300">{{ $enrollment->instructor ? $enrollment->instructor->name : 'Not Assigned' }}</span>
+                                        </div>
+                                        <div class="text-gray-500">
+                                            Status: <span class="font-semibold text-{{ $enrollment->status === 'Active' ? 'success' : ($enrollment->status === 'Hold' ? 'warning' : ($enrollment->status === 'Completed' ? 'info' : 'danger')) }}-600">{{ $enrollment->status }}</span>
+                                        </div>
+                                    </div>
+                                @empty
+                                    <span class="text-sm text-gray-500">No course enrollments found.</span>
+                                @endforelse
+                            </div>
                         </div>
                         <div>
                             <span class="text-xs text-gray-400 font-medium block">Mobile</span>
@@ -110,6 +121,12 @@
                         </button>
                         <button @click="activeTab = 'certificates'" :class="activeTab === 'certificates' ? 'border-primary-500 text-primary-600' : 'border-transparent text-gray-500 hover:text-gray-700'" class="px-6 py-4 text-sm font-medium border-b-2 outline-none">
                             Certificates
+                        </button>
+                        <button @click="activeTab = 'courses'" :class="activeTab === 'courses' ? 'border-primary-500 text-primary-600' : 'border-transparent text-gray-500 hover:text-gray-700'" class="px-6 py-4 text-sm font-medium border-b-2 outline-none">
+                            Courses
+                        </button>
+                        <button @click="activeTab = 'documents'" :class="activeTab === 'documents' ? 'border-primary-500 text-primary-600' : 'border-transparent text-gray-500 hover:text-gray-700'" class="px-6 py-4 text-sm font-medium border-b-2 outline-none">
+                            Documents
                         </button>
                     </div>
 
@@ -240,8 +257,8 @@
                         <div x-show="activeTab === 'certificates'" class="space-y-4">
                             <div class="flex items-center justify-between mb-4">
                                 <h3 class="text-md font-bold text-gray-900 dark:text-white">Issued Certificates</h3>
-                                @if($record->status === 'Completed')
-                                    <a href="{{ route('filament.admin.resources.certificates.index') }}/create?admission_id={{ $record->id }}&course_id={{ $record->course_id }}" class="text-sm font-semibold text-primary-600 hover:underline">
+                                @if($record->enrollments()->where('status', 'Completed')->exists())
+                                    <a href="{{ route('filament.admin.resources.certificates.index') }}/create?admission_id={{ $record->id }}" class="text-sm font-semibold text-primary-600 hover:underline">
                                         + Generate Certificate
                                     </a>
                                 @endif
@@ -265,6 +282,93 @@
                                 @empty
                                     <p class="text-sm text-gray-400">No certificates generated for this student yet.</p>
                                 @endforelse
+                            </div>
+                        </div>
+
+                        <!-- Courses Tab -->
+                        <div x-show="activeTab === 'courses'" class="space-y-4">
+                            <h3 class="text-md font-bold text-gray-900 dark:text-white mb-4">Enrolled Courses Details</h3>
+                            <div class="grid grid-cols-1 gap-4">
+                                @forelse($record->enrollments as $enrollment)
+                                    <div class="p-5 bg-gray-50 rounded-xl dark:bg-gray-800 border dark:border-gray-700 text-sm space-y-2">
+                                        <div class="flex items-center justify-between border-b dark:border-gray-700 pb-2">
+                                            <span class="font-bold text-lg text-primary-600 dark:text-primary-400">
+                                                {{ $enrollment->course->course_name }} ({{ $enrollment->course->course_code }})
+                                            </span>
+                                            <span class="px-2.5 py-0.5 text-xs font-semibold rounded-full bg-{{ $enrollment->status === 'Active' ? 'success' : ($enrollment->status === 'Hold' ? 'warning' : ($enrollment->status === 'Completed' ? 'info' : 'danger')) }}-100 text-{{ $enrollment->status === 'Active' ? 'success' : ($enrollment->status === 'Hold' ? 'warning' : ($enrollment->status === 'Completed' ? 'info' : 'danger')) }}-800">
+                                                {{ $enrollment->status }}
+                                            </span>
+                                        </div>
+                                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+                                            <div>
+                                                <span class="text-xs text-gray-400 font-medium block">Time Slot</span>
+                                                <span class="font-semibold text-gray-800 dark:text-gray-200">{{ $enrollment->time_slot ?: 'Not Assigned' }}</span>
+                                            </div>
+                                            <div>
+                                                <span class="text-xs text-gray-400 font-medium block">Instructor</span>
+                                                <span class="font-semibold text-gray-800 dark:text-gray-200">{{ $enrollment->instructor ? $enrollment->instructor->name : 'Not Assigned' }}</span>
+                                            </div>
+                                            <div>
+                                                <span class="text-xs text-gray-400 font-medium block">Admission Date</span>
+                                                <span class="font-semibold text-gray-800 dark:text-gray-200">{{ $record->admission_date ? $record->admission_date->format('Y-m-d') : 'N/A' }}</span>
+                                            </div>
+                                            <div>
+                                                <span class="text-xs text-gray-400 font-medium block">Total Course Duration</span>
+                                                <span class="font-semibold text-gray-800 dark:text-gray-200">{{ $enrollment->course->duration_months }} Months</span>
+                                            </div>
+                                        </div>
+                                        <div class="border-t dark:border-gray-700 pt-3 mt-3 grid grid-cols-2 md:grid-cols-4 gap-4">
+                                            <div>
+                                                <span class="text-xs text-gray-400 block">Total Fee</span>
+                                                <span class="font-bold text-gray-700 dark:text-gray-300">₹{{ number_format($enrollment->total_fee, 2) }}</span>
+                                            </div>
+                                            <div>
+                                                <span class="text-xs text-gray-400 block">Discount</span>
+                                                <span class="font-bold text-amber-600">₹{{ number_format($enrollment->discount_amount, 2) }}</span>
+                                            </div>
+                                            <div>
+                                                <span class="text-xs text-gray-400 block">Final Fee</span>
+                                                <span class="font-bold text-gray-900 dark:text-white">₹{{ number_format($enrollment->final_fee, 2) }}</span>
+                                            </div>
+                                            <div>
+                                                @php 
+                                                    $coursePaid = $enrollment->installments()->sum('paid_amount');
+                                                    $courseDue = max(0.00, $enrollment->final_fee - $coursePaid);
+                                                @endphp
+                                                <span class="text-xs text-gray-400 block">Remaining Due</span>
+                                                <span class="font-bold text-{{ $courseDue > 0 ? 'danger-600' : 'success-600' }}">₹{{ number_format($courseDue, 2) }}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                @empty
+                                    <p class="text-sm text-gray-400">No enrolled courses details found.</p>
+                                @endforelse
+                        </div>
+
+                        <!-- Documents Tab -->
+                        <div x-show="activeTab === 'documents'" class="space-y-4">
+                            <h3 class="text-md font-bold text-gray-900 dark:text-white mb-4">Uploaded Documents</h3>
+                            <div class="space-y-3">
+                                @if($record->documents && is_array($record->documents) && count($record->documents) > 0)
+                                    @foreach($record->documents as $doc)
+                                        <div class="flex items-center justify-between p-4 bg-gray-50 rounded-xl dark:bg-gray-800 border dark:border-gray-700">
+                                            <div class="flex items-center space-x-3">
+                                                <svg class="w-8 h-8 text-primary-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z"/></svg>
+                                                <div>
+                                                    <span class="font-semibold text-sm text-gray-800 dark:text-gray-200 block">{{ basename($doc) }}</span>
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <a href="{{ route('admin.student-document', ['path' => $doc]) }}" target="_blank" class="text-xs text-primary-600 font-semibold hover:underline flex items-center gap-1">
+                                                    <svg class="w-4.5 h-4.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
+                                                    View / Download
+                                                </a>
+                                            </div>
+                                        </div>
+                                    @endforeach
+                                @else
+                                    <p class="text-sm text-gray-400">No documents uploaded for this admission yet.</p>
+                                @endif
                             </div>
                         </div>
                     </div>

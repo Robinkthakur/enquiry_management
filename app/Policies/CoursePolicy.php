@@ -7,37 +7,37 @@ use App\Models\Course;
 
 class CoursePolicy
 {
-    public function viewAny(User $user): bool
+    public function viewAny($user): bool
     {
         return $user->hasPermissionTo('courses.view');
     }
 
-    public function view(User $user, Course $course): bool
+    public function view($user, Course $course): bool
     {
         return $user->hasPermissionTo('courses.view');
     }
 
-    public function create(User $user): bool
+    public function create($user): bool
     {
         return $user->hasPermissionTo('courses.create');
     }
 
-    public function update(User $user, Course $course): bool
+    public function update($user, Course $course): bool
     {
         return $user->hasPermissionTo('courses.update');
     }
 
-    public function delete(User $user, Course $course): bool
+    public function delete($user, Course $course): bool
     {
         return $user->hasPermissionTo('courses.delete');
     }
 
-    public function restore(User $user, Course $course): bool
+    public function restore($user, Course $course): bool
     {
         return $user->hasPermissionTo('courses.delete');
     }
 
-    public function forceDelete(User $user, Course $course): bool
+    public function forceDelete($user, Course $course): bool
     {
         return $user->hasPermissionTo('courses.delete');
     }

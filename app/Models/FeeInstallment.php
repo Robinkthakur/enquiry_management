@@ -5,17 +5,18 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
-use Spatie\Activitylog\Models\Concerns\LogsActivity;
-use Spatie\Activitylog\Support\LogOptions;
+// use Spatie\Activitylog\Models\Concerns\LogsActivity;
+// use Spatie\Activitylog\Support\LogOptions;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class FeeInstallment extends Model
 {
-    use HasUuids, SoftDeletes, LogsActivity;
+    use HasUuids, SoftDeletes;
 
     protected $fillable = [
         'admission_id',
+        'admission_course_id',
         'installment_no',
         'due_date',
         'amount',
@@ -31,13 +32,18 @@ class FeeInstallment extends Model
         'due_amount' => 'decimal:2',
     ];
 
-    public function getActivitylogOptions(): LogOptions
+    public function enrollment(): BelongsTo
     {
-        return LogOptions::defaults()
-            ->logAll()
-            ->logOnlyDirty()
-            ->dontLogEmptyChanges();
+        return $this->belongsTo(AdmissionCourse::class, 'admission_course_id');
     }
+
+    // public function getActivitylogOptions(): LogOptions
+    // {
+    //     return LogOptions::defaults()
+    //         ->logAll()
+    //         ->logOnlyDirty()
+    //         ->dontLogEmptyChanges();
+    // }
 
     public function admission(): BelongsTo
     {

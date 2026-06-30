@@ -18,7 +18,7 @@ class CourseWiseStudentsChart extends ChartWidget
     protected function getData(): array
     {
         $courses = Course::withCount([
-            'admissions' => fn ($q) => $q->where('status', 'Active')
+            'admissions' => fn ($q) => $q->where('admission_courses.status', 'Active')
         ])
         ->get()
         ->pluck('admissions_count', 'course_code')

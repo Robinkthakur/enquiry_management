@@ -5,8 +5,8 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
-use Spatie\Activitylog\Models\Concerns\LogsActivity;
-use Spatie\Activitylog\Support\LogOptions;
+// use Spatie\Activitylog\Models\Concerns\LogsActivity;
+// use Spatie\Activitylog\Support\LogOptions;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -14,7 +14,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Enquiry extends Model
 {
-    use HasUuids, SoftDeletes, LogsActivity;
+    use HasUuids, SoftDeletes;
 
     protected $fillable = [
         'enquiry_no',
@@ -56,7 +56,7 @@ class Enquiry extends Model
 
         static::created(function ($enquiry) {
             $enquiry->timeline()->create([
-                'user_id' => auth()->id() ?? $enquiry->taken_by ?? User::first()->id,
+                'user_id' => auth()->id() ?? $enquiry->taken_by ?? Admin::first()->id,
                 'status_from' => null,
                 'status_to' => $enquiry->status,
                 'notes' => 'Enquiry registered. Remarks: ' . $enquiry->remarks,
@@ -78,7 +78,7 @@ class Enquiry extends Model
                 }
 
                 $enquiry->timeline()->create([
-                    'user_id' => auth()->id() ?? User::first()->id,
+                    'user_id' => auth()->id() ?? Admin::first()->id,
                     'status_from' => $enquiry->getOriginal('status'),
                     'status_to' => $enquiry->status,
                     'notes' => implode(', ', $notes) . ($enquiry->isDirty('remarks') ? '. Remarks: ' . $enquiry->remarks : ''),
@@ -88,13 +88,13 @@ class Enquiry extends Model
         });
     }
 
-    public function getActivitylogOptions(): LogOptions
-    {
-        return LogOptions::defaults()
-            ->logAll()
-            ->logOnlyDirty()
-            ->dontLogEmptyChanges();
-    }
+    // public function getActivitylogOptions(): LogOptions
+    // {
+    //     return LogOptions::defaults()
+    //         ->logAll()
+    //         ->logOnlyDirty()
+    //         ->dontLogEmptyChanges();
+    // }
 
     public function interestedCourses(): BelongsToMany
     {

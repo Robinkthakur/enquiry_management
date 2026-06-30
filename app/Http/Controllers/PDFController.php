@@ -16,7 +16,7 @@ class PDFController extends Controller
      */
     public function downloadReceipt(FeePayment $payment)
     {
-        $payment->load(['admission.course', 'installment']);
+        $payment->load(['admission.enrollments.course', 'installment']);
         
         $setting = CompanySetting::first();
         $logoBase64 = null;
@@ -37,7 +37,7 @@ class PDFController extends Controller
      */
     public function downloadCertificate(Certificate $certificate)
     {
-        $certificate->load(['admission.course']);
+        $certificate->load(['admission', 'course']);
 
         // Generate base64 QR Code pointing to verification URL
         $verifyUrl = url('/verify-certificate/' . $certificate->verification_token);

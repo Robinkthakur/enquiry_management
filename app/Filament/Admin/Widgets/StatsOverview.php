@@ -8,6 +8,11 @@ use App\Models\FeeInstallment;
 use App\Models\FeePayment;
 use Filament\Widgets\StatsOverviewWidget as BaseWidget;
 use Filament\Widgets\StatsOverviewWidget\Stat;
+use App\Filament\Admin\Resources\EnquiryResource;
+use App\Filament\Admin\Resources\AdmissionResource;
+use App\Filament\Admin\Resources\FeePaymentResource;
+use App\Filament\Admin\Resources\DueFeeResource;
+use App\Filament\Admin\Resources\AttendanceResource;
 
 class StatsOverview extends BaseWidget
 {
@@ -45,27 +50,33 @@ class StatsOverview extends BaseWidget
             Stat::make('Total Enquiries', $totalEnquiries)
                 ->description("Today's: {$todaysEnquiries}")
                 ->descriptionIcon('heroicon-m-chat-bubble-left-right')
-                ->color('info'),
+                ->color('info')
+                ->url(EnquiryResource::getUrl('index')),
 
             Stat::make('Admissions This Month', $admissionsThisMonth)
                 ->description("Active Students: {$activeStudents}")
                 ->descriptionIcon('heroicon-m-user-group')
-                ->color('success'),
+                ->color('success')
+                ->url(AdmissionResource::getUrl('index')),
 
             Stat::make('Today\'s Fee Collection', '₹' . number_format($todaysCollection, 2))
                 ->description("Monthly: ₹" . number_format($monthlyCollection, 2))
                 ->descriptionIcon('heroicon-m-banknotes')
-                ->color('success'),
+                ->color('success')
+                ->url(FeePaymentResource::getUrl('index')),
 
             Stat::make('Total Due Fees', '₹' . number_format($dueFees, 2))
                 ->description("Upcoming (7d): {$upcomingInstallments}")
                 ->descriptionIcon('heroicon-m-exclamation-circle')
-                ->color('danger'),
+                ->color('danger')
+                ->url(DueFeeResource::getUrl('index')),
 
             Stat::make('Avg Attendance', "{$avgAttendance}%")
                 ->description('Active student average')
                 ->descriptionIcon('heroicon-m-check-circle')
-                ->color($avgAttendance >= 75 ? 'success' : 'warning'),
+                ->color($avgAttendance >= 75 ? 'success' : 'warning')
+                ->url(AttendanceResource::getUrl('index')),
         ];
     }
 }
+

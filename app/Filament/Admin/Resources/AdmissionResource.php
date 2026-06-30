@@ -54,6 +54,13 @@ class AdmissionResource extends Resource
                         Forms\Components\Textarea::make('address')
                             ->rows(2)
                             ->maxLength(65535),
+                        Forms\Components\FileUpload::make('documents')
+                            ->multiple()
+                            ->directory('student_documents')
+                            ->preserveFilenames()
+                            ->maxFiles(5)
+                            ->label('Upload Documents')
+                            ->columnSpanFull(),
                     ])->columnSpanFull(),
 
                 Section::make('Course Enrollments')
@@ -67,7 +74,8 @@ class AdmissionResource extends Resource
                                 Grid::make(4)
                                     ->schema([
                                         Forms\Components\Select::make('course_id')
-                                            ->relationship('course', 'course_name')
+                                            ->label('Select Course')
+                                            ->options(Course::where('status', 'active')->pluck('course_name', 'id'))
                                             ->required()
                                             ->reactive()
                                             ->afterStateUpdated(function ($state, callable $set) {
@@ -124,7 +132,7 @@ class AdmissionResource extends Resource
                                             }),
                                         Forms\Components\Select::make('instructor_id')
                                             ->label('Assigned Instructor')
-                                            ->options(User::role('Instructor')->pluck('name', 'id'))
+                                            ->options(\App\Models\Admin::role('Instructor')->pluck('name', 'id'))
                                             ->searchable()
                                             ->required(),
                                     ]),
@@ -168,26 +176,30 @@ class AdmissionResource extends Resource
     {
         return $table
             ->columns([
-                Tables\Columns\TextColumn::make('roll_no')
+                Tables\Columns\TextColumn::make('admission_no')
+                    ->label('Admission No')
                     ->searchable()
                     ->sortable(),
                 Tables\Columns\ImageColumn::make('student_photo')
                     ->circular()
-                    ->label('Photo'),
+                    ->label('Photo')
+                    ->disk('local'),
                 Tables\Columns\TextColumn::make('student_name')
                     ->searchable()
                     ->sortable(),
                 Tables\Columns\TextColumn::make('mobile')
                     ->searchable(),
-                Tables\Columns\TextColumn::make('course.course_code')
-                    ->label('Course')
-                    ->sortable(),
-                Tables\Columns\TextColumn::make('time_slot')
-                    ->label('Time Slot')
-                    ->sortable(),
+                Tables\Columns\TextColumn::make('enrollments.course.course_code')
+                    ->label('Courses')
+                    ->badge()
+                    ->color('info')
+                    ->searchable(),
+                Tables\Columns\TextColumn::make('enrollments.time_slot')
+                    ->label('Time Slots')
+                    ->bulleted(),
                 Tables\Columns\TextColumn::make('final_fee')
                     ->money('INR')
-                    ->sortable(),
+                    ->state(fn (Admission $record): float => $record->final_fee),
                 Tables\Columns\TextColumn::make('status')
                     ->badge()
                     ->color(fn (string $state): string => match ($state) {
@@ -207,9 +219,12 @@ class AdmissionResource extends Resource
                         'Cancelled' => 'Cancelled',
                     ]),
                 Tables\Filters\SelectFilter::make('course_id')
-                    ->relationship('course', 'course_name'),
+                    ->label('Course')
+                    ->relationship('enrollments.course', 'course_name'),
                 Tables\Filters\SelectFilter::make('time_slot')
-                    ->options(fn () => Admission::whereNotNull('time_slot')->distinct()->pluck('time_slot', 'time_slot')->toArray()),
+                    ->label('Time Slot')
+                    ->options(fn () => \App\Models\AdmissionCourse::whereNotNull('time_slot')->distinct()->pluck('time_slot', 'time_slot')->toArray())
+                    ->query(fn (\Illuminate\Database\Eloquent\Builder $query, array $data) => $query->when($data['value'], fn ($q, $value) => $q->whereHas('enrollments', fn ($eq) => $eq->where('time_slot', $value)))),
             ])
             ->actions([
                 Actions\ActionGroup::make([
@@ -218,6 +233,55 @@ class AdmissionResource extends Resource
                         ->icon('heroicon-o-user')
                         ->color('info'),
                     Actions\EditAction::make(),
+
+                    // Send FCM Custom Message Action
+                    Actions\Action::make('send_message')
+                        ->label('Send Message')
+                        ->color('success')
+                        ->icon('heroicon-o-paper-airplane')
+                        ->form([
+                            Forms\Components\TextInput::make('title')
+                                ->required()
+                                ->default('Important Update'),
+                            Forms\Components\Textarea::make('message')
+                                ->required()
+                                ->rows(4)
+                                ->placeholder('Type your custom message here...'),
+                        ])
+                        ->action(function (Admission $record, array $data): void {
+                            $user = $record->user ?? null;
+                            if (!$user) {
+                                \Filament\Notifications\Notification::make()
+                                    ->title('Error')
+                                    ->body('Student user account not found.')
+                                    ->danger()
+                                    ->send();
+                                return;
+                            }
+
+                            $firebaseService = app(\App\Services\FirebaseService::class);
+                            $results = $firebaseService->sendToUser($user, $data['title'], $data['message'], [
+                                'type' => 'custom_announcement'
+                            ]);
+
+                            $tokensCount = count($results);
+                            $successCount = count(array_filter($results));
+
+                            if ($tokensCount === 0) {
+                                \Filament\Notifications\Notification::make()
+                                    ->title('No Registered Devices')
+                                    ->body('The student has no registered FCM tokens for push notifications.')
+                                    ->warning()
+                                    ->send();
+                            } else {
+                                \Filament\Notifications\Notification::make()
+                                    ->title('Message Sent')
+                                    ->body("Message successfully sent to {$successCount} of {$tokensCount} active device(s).")
+                                    ->success()
+                                    ->send();
+                            }
+                        }),
+                        
                     Actions\DeleteAction::make(),
                 ]),
             ])
@@ -225,7 +289,8 @@ class AdmissionResource extends Resource
                 Actions\BulkActionGroup::make([
                     Actions\DeleteBulkAction::make(),
                 ]),
-            ]);
+            ])
+            ->defaultSort('created_at', 'desc');
     }
 
     public static function getRelations(): array

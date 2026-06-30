@@ -15,7 +15,7 @@ class ManageFeeHolds extends ManageRecords
         return [
             Actions\CreateAction::make()
                 ->mutateFormDataUsing(function (array $data): array {
-                    $data['approved_by'] = auth()->id() ?? User::first()->id;
+                    $data['approved_by'] = auth()->id() ?? \App\Models\Admin::first()->id;
                     return $data;
                 }),
         ];

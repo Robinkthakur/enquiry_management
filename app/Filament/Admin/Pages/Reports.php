@@ -6,6 +6,7 @@ use App\Models\Course;
 use App\Models\User;
 use App\Models\Enquiry;
 use App\Models\Admission;
+use App\Models\AdmissionCourse;
 use App\Models\Attendance;
 use App\Models\FeePayment;
 use App\Models\FeeInstallment;
@@ -86,7 +87,7 @@ class Reports extends Page implements Forms\Contracts\HasForms
                             ->label('Time Slot Filter (Optional)')
                             ->options(function (callable $get) {
                                 $courseId = $get('course_id');
-                                $query = Admission::whereNotNull('time_slot')->distinct();
+                                $query = AdmissionCourse::whereNotNull('time_slot')->distinct();
                                 if ($courseId) {
                                     $query->where('course_id', $courseId);
                                 }
@@ -130,58 +131,59 @@ class Reports extends Page implements Forms\Contracts\HasForms
                 break;
 
             case 'admissions':
-                $headers = ['Admission No', 'Roll No', 'Student Name', 'Mobile', 'Course', 'Time Slot', 'Final Fee', 'Date'];
-                $query = Admission::whereBetween('admission_date', [$start, $end]);
+                $headers = ['Admission No', 'Student Name', 'Mobile', 'Course', 'Time Slot', 'Final Fee', 'Date'];
+                $query = AdmissionCourse::with(['admission', 'course'])
+                    ->whereHas('admission', fn ($q) => $q->whereBetween('admission_date', [$start, $end]));
                 if ($courseId) $query->where('course_id', $courseId);
                 if ($timeSlot) $query->where('time_slot', $timeSlot);
                 $records = $query->get();
                 foreach ($records as $r) {
                     $rows[] = [
-                        $r->admission_no, $r->roll_no, $r->student_name, $r->mobile, 
+                        $r->admission->admission_no, $r->admission->student_name, $r->admission->mobile, 
                         $r->course->course_code, $r->time_slot ?: 'N/A', '₹' . number_format($r->final_fee, 2), 
-                        $r->admission_date->format('Y-m-d')
+                        $r->admission->admission_date->format('Y-m-d')
                     ];
                 }
                 break;
 
             case 'students':
-                $headers = ['Roll No', 'Student Name', 'Mobile', 'Course', 'Time Slot', 'Attendance %', 'Status'];
-                $query = Admission::query();
+                $headers = ['Admission No', 'Student Name', 'Mobile', 'Course', 'Time Slot', 'Attendance %', 'Status'];
+                $query = AdmissionCourse::with(['admission', 'course']);
                 if ($courseId) $query->where('course_id', $courseId);
                 if ($timeSlot) $query->where('time_slot', $timeSlot);
                 $records = $query->get();
                 foreach ($records as $r) {
                     $rows[] = [
-                        $r->roll_no, $r->student_name, $r->mobile, 
+                        $r->admission?->admission_no, $r->admission?->student_name, $r->admission?->mobile, 
                         $r->course->course_code, $r->time_slot ?: 'N/A', 
-                        $r->attendance_percentage . '%', $r->status
+                        $r->admission?->attendance_percentage . '%', $r->status
                     ];
                 }
                 break;
 
             case 'attendance':
-                $headers = ['Date', 'Time Slot', 'Student Name', 'Roll No', 'Status'];
+                $headers = ['Date', 'Time Slot', 'Student Name', 'Admission No', 'Status'];
                 $query = Attendance::whereBetween('attendance_date', [$start, $end]);
                 if ($timeSlot) {
-                    $query->whereHas('student', fn ($q) => $q->where('time_slot', $timeSlot));
+                    $query->whereHas('enrollment', fn ($q) => $q->where('time_slot', $timeSlot));
                 }
                 if ($courseId) {
-                    $query->whereHas('student', fn ($q) => $q->where('course_id', $courseId));
+                    $query->whereHas('enrollment', fn ($q) => $q->where('course_id', $courseId));
                 }
-                $records = $query->with(['student.course'])->get();
+                $records = $query->with(['student', 'enrollment.course'])->get();
                 foreach ($records as $r) {
                     $rows[] = [
-                        $r->attendance_date->format('Y-m-d'), $r->student->time_slot ?: 'N/A', 
-                        $r->student->student_name, $r->student->roll_no, $r->status
+                        $r->attendance_date->format('Y-m-d'), $r->enrollment->time_slot ?: 'N/A', 
+                        $r->student->student_name, $r->student->admission_no, $r->status
                     ];
                 }
                 break;
 
             case 'fee_collection':
-                $headers = ['Receipt No', 'Student Name', 'Roll No', 'Payment Method', 'Amount Paid', 'Date'];
+                $headers = ['Receipt No', 'Student Name', 'Admission No', 'Payment Method', 'Amount Paid', 'Date'];
                 $query = FeePayment::whereBetween('receipt_date', [$start, $end]);
                 if ($courseId || $timeSlot) {
-                    $query->whereHas('admission', function ($q) use ($courseId, $timeSlot) {
+                    $query->whereHas('installment.enrollment', function ($q) use ($courseId, $timeSlot) {
                         if ($courseId) $q->where('course_id', $courseId);
                         if ($timeSlot) $q->where('time_slot', $timeSlot);
                     });
@@ -189,7 +191,7 @@ class Reports extends Page implements Forms\Contracts\HasForms
                 $records = $query->with('admission')->get();
                 foreach ($records as $r) {
                     $rows[] = [
-                        $r->receipt_no, $r->admission->student_name, $r->admission->roll_no, 
+                        $r->receipt_no, $r->admission->student_name, $r->admission->admission_no, 
                         $r->payment_method, '₹' . number_format($r->amount_paid, 2), 
                         $r->receipt_date->format('Y-m-d')
                     ];
@@ -197,11 +199,11 @@ class Reports extends Page implements Forms\Contracts\HasForms
                 break;
 
             case 'due_fees':
-                $headers = ['Student Name', 'Roll No', 'Inst No', 'Due Date', 'Amount Due', 'Status'];
+                $headers = ['Student Name', 'Admission No', 'Inst No', 'Due Date', 'Amount Due', 'Status'];
                 $query = FeeInstallment::whereIn('status', ['Pending', 'Partial', 'Overdue'])
                     ->whereBetween('due_date', [$start, $end]);
                 if ($courseId || $timeSlot) {
-                    $query->whereHas('admission', function ($q) use ($courseId, $timeSlot) {
+                    $query->whereHas('enrollment', function ($q) use ($courseId, $timeSlot) {
                         if ($courseId) $q->where('course_id', $courseId);
                         if ($timeSlot) $q->where('time_slot', $timeSlot);
                     });
@@ -209,7 +211,7 @@ class Reports extends Page implements Forms\Contracts\HasForms
                 $records = $query->with('admission')->get();
                 foreach ($records as $r) {
                     $rows[] = [
-                        $r->admission->student_name, $r->admission->roll_no, $r->installment_no, 
+                        $r->admission->student_name, $r->admission->admission_no, $r->installment_no, 
                         $r->due_date->format('Y-m-d'), '₹' . number_format($r->due_amount, 2), $r->status
                     ];
                 }
@@ -229,12 +231,11 @@ class Reports extends Page implements Forms\Contracts\HasForms
 
             case 'instructors':
                 $headers = ['Instructor Name', 'Email', 'Active Students'];
-                $records = User::role('Instructor')->withCount([
-                    'admissions' => fn ($q) => $q->where('status', 'Active')
-                ])->get();
+                $records = User::role('Instructor')->get();
                 foreach ($records as $r) {
+                    $count = AdmissionCourse::where('instructor_id', $r->id)->where('status', 'Active')->count();
                     $rows[] = [
-                        $r->name, $r->email, $r->admissions_count
+                        $r->name, $r->email, $count
                     ];
                 }
                 break;
